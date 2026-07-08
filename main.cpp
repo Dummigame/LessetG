@@ -691,17 +691,19 @@ int main(int, char**)
                                         {
                                             instances.at(selectedInstance).lastScriptOutput+="Graphing "+scriptEquation.substr(5)+'\n';
                                             graphsEquations.push_back(scriptEquation.substr(5));
+                                            recalculateGraphs=true;
                                         }
                                         else for(size_t i{}; i<graphsEquations.size(); i++)
                                         {
                                             if(graphsEquations.at(i)==scriptEquation.substr(5)) break;
-                                            else if(i==graphsEquations.size()-1) 
+                                            else if(i>=graphsEquations.size()-1) 
                                             {
                                                 instances.at(selectedInstance).lastScriptOutput+="Graphing "+scriptEquation.substr(5)+'\n';
                                                 graphsEquations.push_back(scriptEquation.substr(5));
+                                                recalculateGraphs=true;
                                             }
                                         }
-                                        skip=true;
+                                        continue;
                                     }
 
 
@@ -1586,11 +1588,15 @@ int main(int, char**)
 
                 if(graphsEquations.size()!=0 || (previewGraph))
                 {
+
                     for(size_t i{}; i<graphsEquations.size();i++)
                     {
-                        if(graphsEquations.at(i).find('x')==std::string::npos)
+                        std::string graphEquationExpandedMacros = graphsEquations.at(i);
+                        lessetB::replaceAliases(graphEquationExpandedMacros);
+                        if(graphEquationExpandedMacros.find('x')==std::string::npos)
                         {
                             graphsEquations.erase(graphsEquations.begin()+i);
+                            recalculateGraphs=true;
                         }
                     }
 

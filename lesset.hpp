@@ -836,6 +836,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 i--;
             }
         }
+
         bool hasX{};
         
         if(tokens.size()==0) goto cleanup;
@@ -848,7 +849,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
         }
         if(equation.at(0)=='x') hasX=true;
 
-        if(!hasX) // No x found
+        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile)) // No x found
         {
             resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, NAN);
 
@@ -896,7 +897,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             resultAsOSStream.str("");
             resultAsOSStream.clear();
         }
-        else if(!options.graph)
+        else if(!options.graph && !(canDeclareIdentifiers && !passedCalculationsFile))
         {
             // result="";
             std::cout.precision(MAXOUTPUTPRECISION);
@@ -950,7 +951,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 resultAsOSStream.clear();
             }
         }
-        else
+        else if(!(canDeclareIdentifiers && !passedCalculationsFile))
         {
             globals::points.first.clear();
             globals::points.second.clear();
@@ -978,7 +979,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             }    
         }
 
-        if(!hasX)
+        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile))
         {
             std::string addToHistory = '\n'+equation+" = "+previousResult;
             if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
@@ -1383,12 +1384,14 @@ T calculation(std::vector<Token> tokens, const T xValue)
         // Case example: 3(expr) -> 3 h* (expr)
         if((tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR || tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION) &&
             tokens.at(i-1).typeCategory()!=tokenCategory_t::OPERATOR &&
-            tokens.at(i-1).typeCategory()!=tokenCategory_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("h*"));
+            tokens.at(i-1).typeCategory()!=tokenCategory_t::FUNCTION &&
+            tokens.at(i-1).type()!=token_t::ROOTARGLEFT && tokens.at(i-1).type()!=token_t::LOGARGLEFT) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: (expr)3 -> (expr) h* 3 
         if(tokens.at(i-1).typeCategory()==tokenCategory_t::SUBEXPR && 
            tokens.at(i).typeCategory()!=tokenCategory_t::OPERATOR &&
-           tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.emplace(tokens.begin()+i++, Token("h*"));
+           tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR &&
+           tokens.at(i-1).type()!=token_t::ROOTARGLEFT && tokens.at(i-1).type()!=token_t::LOGARGLEFT) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3-3 -> 3+-3, (expr)-3 -> (expr)+-3
         // Reason: Binary minus is a lie lol
