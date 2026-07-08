@@ -8,6 +8,8 @@ Also, it has a small scripting language. And like, 64 functions. And variables. 
 
 To compile:
 
+- Install the Boost C++ library https://www.boost.org/
+
 - Get a copy of NotoSansMathRegular
 
 - Check https://github.com/ocornut/imgui/blob/master/docs/FONTS.md#loading-font-data-embedded-in-source-code 
@@ -19,6 +21,8 @@ To compile:
 - Set paths on lines 19 and 30 of CMakeLists.txt (to GLFW and ImGui respectively).
 
 - Follow instructions at the top of CMakeLists.txt
+
+- You may need to either change some "path" includes to \<path\> includes or include the relevant files in the project directory in case they aren't found.
 
 - This probably only works on linux. The probably is for it working on linux.
 
