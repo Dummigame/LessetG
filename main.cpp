@@ -52,7 +52,7 @@ static ImGui_ImplVulkanH_Window g_MainWindowData;
 static uint32_t                 g_MinImageCount = 2;
 static bool                     g_SwapChainRebuild = false;
 
-struct instanceData
+struct Instance
 {
     std::string name;
     std::vector<lessetB::Variable> userVariables;
@@ -73,8 +73,15 @@ struct instanceData
 
 
 bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &pointsY, size_t i, int maxIndividualGraphPointsMultiplier);
-bool addIdentifier(instanceData &data,const lessetB::Alias &newAlias);
-bool addIdentifier(instanceData &data,const lessetB::Variable &newVariable);
+bool addIdentifier(Instance &data,const lessetB::Alias &newAlias);
+bool addIdentifier(Instance &data,const lessetB::Variable &newVariable);
+bool replaceAliases(std::string &equation, Instance &instance);
+
+
+
+
+
+
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -513,7 +520,7 @@ int main(int, char**)
 
     bool hasRunScriptInMain{};
 
-    std::vector<instanceData> instances;
+    std::vector<Instance> instances;
     instances.emplace_back("main"); 
 
     std::pair<std::vector<std::vector<double>>,std::vector<std::vector<double>>> graphsPoints{};
@@ -599,7 +606,7 @@ int main(int, char**)
                                 if(ImGui::Button(instances.at(i).name.c_str()))
                                 {
                                     selectedInstance=i;
-                                    std::cout<<"\nSelected instance: "<<selectedInstance;
+                                    recalculateGraphs=true;
                                 }
                             }    
                             ImGui::EndMenu();
@@ -629,7 +636,7 @@ int main(int, char**)
                         {
                             if(ImGui::Button("Clear main instance's data"))
                             {
-                                instances.at(0)=instanceData();
+                                instances.at(0)=Instance();
                                 hasRunScriptInMain=false;
                             }
                         }
@@ -1586,19 +1593,38 @@ int main(int, char**)
                 ImPlotRect prevLimits {limits.X.Min, limits.X.Max, limits.Y.Min, limits.Y.Max};
                 limits = ImPlot::GetPlotLimits();
 
+                bool skipRestOfFrame{};
                 if(graphsEquations.size()!=0 || (previewGraph))
                 {
 
-                    for(size_t i{}; i<graphsEquations.size();i++)
+                    for(int i{}; i<graphsEquations.size();i++)
                     {
                         std::string graphEquationExpandedMacros = graphsEquations.at(i);
-                        lessetB::replaceAliases(graphEquationExpandedMacros);
+                        replaceAliases(graphEquationExpandedMacros, instances.at(selectedInstance));
                         if(graphEquationExpandedMacros.find('x')==std::string::npos)
                         {
                             graphsEquations.erase(graphsEquations.begin()+i);
+                            i--;
                             recalculateGraphs=true;
+                            skipRestOfFrame=true;
                         }
                     }
+
+
+                    if(skipRestOfFrame)
+                    {
+                        ImPlot::EndPlot();
+                        ImGui::End();
+                        // Rendering
+                        ImGui::Render();        ImDrawData* main_draw_data = ImGui::GetDrawData();        const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);        wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;        wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;        wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;        wd->ClearValue.color.float32[3] = clear_color.w;        if (!main_is_minimized)FrameRender(wd, main_draw_data);
+                        // Update and Render additional Platform Windows
+                        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable && false)        {            ImGui::UpdatePlatformWindows();            ImGui::RenderPlatformWindowsDefault();        }
+                        // Present Main Platform Window
+                        if (!main_is_minimized) FramePresent(wd);
+
+                        continue;
+                    }
+
 
                     float precisionDivisor=glfwGetVideoMode(glfwGetPrimaryMonitor())->refreshRate/io.Framerate; // Lower precision to improve framerate for expensive graphs.
                     if(precisionDivisor<1) precisionDivisor=1;
@@ -2030,4 +2056,28 @@ bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &poin
     if(switches<3) return false;
 
     return true; 
+}
+
+
+bool replaceAliases(std::string &equation, Instance &instance)
+{
+    if(instance.userAliases.size()==0) return false;
+    for(size_t i{}; i<instance.userAliases.size(); i++)
+    {
+        for(int j{}; j<equation.length(); j++)
+        {
+            if(equation.find(instance.userAliases.at(i).name,j)==j)
+            {
+                if(j>=3 && equation.find("set",j-3)==j-3)
+                {
+                    break;
+                }
+                equation.erase(j,instance.userAliases.at(i).name.length());
+                equation.insert(j,instance.userAliases.at(i).value);
+                i=0;
+                j=-1;
+            }
+        }
+    }
+    return false;
 }
