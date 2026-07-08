@@ -1,9 +1,7 @@
-# Example usage:
-#  mkdir build
-#  cd build
-#  cmake -g "Visual Studio 14 2015" ..
 
-cmake_minimum_required(VERSION 3.10)
+# CMakeLists.txt written by Noerlol, https://github.com/xNoerPlaysCodes
+
+cmake_minimum_required(VERSION 4.1)
 project(LessetG C CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -14,34 +12,63 @@ set(CMAKE_CXX_STANDARD 23)
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DVK_PROTOTYPES")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_PROTOTYPES")
 
-# GLFW
-if(NOT GLFW_DIR)
-   set(GLFW_DIR path here) # Set this to point to an up-to-date GLFW repo
-endif()
-option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
-option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
-option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
-option(GLFW_INSTALL "Generate installation target" OFF)
-option(GLFW_DOCUMENT_INTERNALS "Include internals in documentation" OFF)
-add_subdirectory(${GLFW_DIR} binary_dir EXCLUDE_FROM_ALL)
-include_directories(${GLFW_DIR}/include)
+include(FetchContent)
 
-# Dear ImGui
-set(IMGUI_DIR path here)
-include_directories(${IMGUI_DIR} ${IMGUI_DIR}/backends ..)
+FetchContent_Declare(
+    libglfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(libglfw)
 
-# Libraries
+FetchContent_Declare(
+    libimgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG docking
+)
+FetchContent_MakeAvailable(libimgui)
+
+FetchContent_Declare(
+    libimplot
+    GIT_REPOSITORY https://github.com/epezent/implot
+    GIT_TAG master
+)
+
+FetchContent_MakeAvailable(libimplot)
+
 find_package(Vulkan REQUIRED)
-#find_library(VULKAN_LIBRARY
-  #NAMES vulkan vulkan-1)
-#set(LIBRARIES "glfw;${VULKAN_LIBRARY}")
 set(LIBRARIES "glfw;Vulkan::Vulkan")
+
+add_library(imgui STATIC
+        ${libimgui_SOURCE_DIR}/imgui.cpp
+        ${libimgui_SOURCE_DIR}/imgui_draw.cpp
+        ${libimgui_SOURCE_DIR}/imgui_demo.cpp
+        ${libimgui_SOURCE_DIR}/imgui_tables.cpp
+        ${libimgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${libimgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+        ${libimgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${libimgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+)
+
+add_library(implot STATIC
+    ${libimplot_SOURCE_DIR}/implot.cpp ${libimplot_SOURCE_DIR}/implot_items.cpp
+)
+
+target_include_directories(implot PRIVATE ${libimgui_SOURCE_DIR})
+
+target_include_directories(imgui PUBLIC ${libimgui_SOURCE_DIR} ${libglfw_SOURCE_DIR}/include)
 
 # Use vulkan headers from glfw:
 include_directories(${GLFW_DIR}/deps)
 
 file(GLOB sources *.cpp)
 
-add_executable(LessetG ${sources} ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_demo.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
-target_link_libraries(LessetG ${LIBRARIES})
-
+add_executable(LessetG ${sources})
+target_include_directories(LessetG PRIVATE
+        ${libimgui_SOURCE_DIR}
+        ${libimgui_SOURCE_DIR}/backends
+        ${libimgui_SOURCE_DIR}/misc/cpp
+        ${libimplot_SOURCE_DIR}
+        ${libglfw_SOURCE_DIR}/include
+)
+target_link_libraries(LessetG ${LIBRARIES} imgui glfw implot)
