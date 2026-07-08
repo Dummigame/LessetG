@@ -1690,13 +1690,15 @@ int main(int, char**)
 
                     if(previewGraph && graphEquation.size()>0)
                     {
+                        std::string previewNonEmptyGraphEquation=graphEquation;
+                        replaceAliases(previewNonEmptyGraphEquation, instances.at(selectedInstance));
                         bool hasX{};
-                        for(int i{}; i<graphEquation.length(); i++)
+                        for(int i{}; i<previewNonEmptyGraphEquation.length(); i++)
                         {
-                            if(i==1 && graphEquation.at(1)=='x' && graphEquation.find("exp",0)!=0) hasX=true;
-                            if(i>1&&graphEquation.at(i)=='x' && graphEquation.find("max",i-2)!=i-2 && graphEquation.find("exp",i-1)!=i-1) hasX=true;
+                            if(i==1 && previewNonEmptyGraphEquation.at(1)=='x' && previewNonEmptyGraphEquation.find("exp",0)!=0) hasX=true;
+                            if(i>1&&previewNonEmptyGraphEquation.at(i)=='x' && previewNonEmptyGraphEquation.find("max",i-2)!=i-2 && previewNonEmptyGraphEquation.find("exp",i-1)!=i-1) hasX=true;
                         }
-                        if(graphEquation.at(0)=='x') hasX=true;
+                        if(previewNonEmptyGraphEquation.at(0)=='x') hasX=true;
 
                         if(hasX)
                         {                        
