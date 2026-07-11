@@ -60,16 +60,15 @@ enum class token_t
 {
     BINARYOP,
     UNARYOP,
-    MULTICHARBINARY,
-    MULTICHARUNARY,
     FUNCTION,
+    IF,
     NUMBER,
-    ROOTARGRIGHT,
-    ROOTARGLEFT,
+    ROOT,
+    LOG,
     DERIVE,
     MEAN, // Meanie
     MEDIAN,
-    STDEV,
+    STDEVP,
     GCF,
     LCM,
     RNDINT,
@@ -81,8 +80,6 @@ enum class token_t
     SABS,
     MIX,
     MIN,
-    LOGARGRIGHT,
-    LOGARGLEFT,
     SUBEXPR,
     VARIABLE,
     CONSTANT,
@@ -115,14 +112,14 @@ struct Point
 
 struct Options
 {
-    bool graph{};   // Whether to draw graph or not
+    bool graph{};
     cpp_dec_float_100 xMin{};
     cpp_dec_float_100 xMax{};  
     cpp_dec_float_100 xStep{}; // Hey, reference
     size_t aroundTruthinessLeniency{2};
     bool interpolateDiscontinuities{};
     bool followImplicitMultiplicationPriorityConvention{true};
-
+    bool showFractions{};
     std::string ans;
 };
 
@@ -152,6 +149,8 @@ bool sortAliasesByNameLength(Alias name1, Alias name2)
     return name1.name.length()>name2.name.length();
 }
 
+class Token;
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -161,6 +160,10 @@ namespace globals
     std::vector<Variable> userVariables;
     std::vector<Alias> userAliases;
     std::pair<std::vector<double>,std::vector<double>> points; 
+    std::string previousResult;
+
+    std::unordered_map<std::string, std::vector<Token>> tokenMemory;
+    
     const std::unordered_map<std::string, token_t> symbols
     {
         {"+",    token_t::BINARYOP},
@@ -211,7 +214,7 @@ namespace globals
         {"phi", token_t::CONSTANT },
         {"eul", token_t::CONSTANT },
         {"rad", token_t::CONSTANT },
-        {"deg", token_t::CONSTANT },
+        {"dgr", token_t::CONSTANT },
         {"inf", token_t::CONSTANT },
         {"ppm", token_t::CONSTANT },
         {"ppb", token_t::CONSTANT },
@@ -222,6 +225,7 @@ namespace globals
         {"Na", token_t::CONSTANT },
         {"true", token_t::CONSTANT },
         {"false", token_t::CONSTANT },
+        {"ans", token_t::CONSTANT},
 
         {"sinc", token_t::FUNCTION},
         {"exp", token_t::FUNCTION},
@@ -351,6 +355,30 @@ namespace globals
         {"sstep", token_t::FUNCTION},
     };
 
+    const std::unordered_map<std::string, token_t> multiArgFunctions
+    {
+        {"root", token_t::ROOT},
+        {"log", token_t::LOG},
+        {"derive", token_t::DERIVE},
+        {"mean", token_t::MEAN},
+        {"median", token_t::MEDIAN},
+        {"stdevp", token_t::STDEVP},
+        {"gcf", token_t::GCF},
+        {"gcd", token_t::GCF},
+        {"hcf", token_t::GCF},
+        {"hcd", token_t::GCF},
+        {"lcm", token_t::LCM},
+        {"rndint", token_t::RNDINT},
+        {"rndsel", token_t::RNDSEL},
+        {"max", token_t::MAX},
+        {"smax", token_t::SMAX},
+        {"min", token_t::MIN},
+        {"smin", token_t::SMIN},
+        {"sabs", token_t::SABS},
+        {"mix", token_t::MIX},
+        {"if", token_t::IF},
+    };
+
     const std::unordered_map<std::string, std::string> constants
     {
         {"e" , "2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427"},
@@ -359,7 +387,7 @@ namespace globals
         {"phi" , "1.618033988749894848204586834365638117720309179805762862135448622705260462818902449707207204189391137"},
         {"eul" , "0.5772156649015328606065120900824024310421593359399235988057672348848677267776646709369470632917467495"},
         {"rad" , "57.29577951308232087679815481410517033240547246656432154916024386120284714832155263244096899585111094"},
-        {"deg" , "0.01745329251994329576923690768488612713442871888541725456097191440171009114603449443682241569634509482"},
+        {"dgr" , "0.01745329251994329576923690768488612713442871888541725456097191440171009114603449443682241569634509482"},
         {"ppm" , "0.000001"},
         {"ppb" , "0.000000001"},
         {"ppt" , "0.000000000001"},
@@ -383,6 +411,7 @@ namespace globals
         {"ma" , "1.6605390666e-27"},
         {"R" , "8.31446261815"},
         {"Na" , "6.02214076e+23"},
+        {"ans" , "ans"},
         {"rnd", "rnd"}, // These are replaced later
         {"rndint","rndint"},
     };
@@ -410,10 +439,6 @@ class Token
 
         if(value=="h*") return token_t::BINARYOP;
 
-        if(isRootArgRight(value)) return token_t::ROOTARGRIGHT;
-        else if(isRootArgLeft(value)) return token_t::ROOTARGLEFT;
-        else if(isLogArgRight(value)) return token_t::LOGARGRIGHT;
-        else if(isLogArgLeft(value)) return token_t::LOGARGLEFT;
         else if(isSubexpr(value)) return token_t::SUBEXPR;
         else if(isAbs(value)) return token_t::ABS;
         else if(isAssignment(value)!=token_t::INVALID) return isAssignment(value);
@@ -432,8 +457,6 @@ class Token
             }
         }
         return tokenTypeCandidate;
-
-        std::unreachable();
     }
     
     static token_t isAssignment(const std::string &input)
@@ -448,23 +471,18 @@ class Token
     token_t isMultiArgFunction(std::string &input)
     {
         size_t offset{};
-        token_t type;
-        if(input.find("max")==0) {offset=4; type=token_t::MAX;}
-        else if(input.find("derive")==0) {offset=7; type=token_t::DERIVE;}
-        else if(input.find("mix")==0) {offset=4; type=token_t::MIX;}
-        else if(input.find("gcf")==0) {offset=4; type=token_t::GCF;}
-        else if(input.find("lcm")==0) {offset=4; type=token_t::LCM;}
-        else if(input.find("sabs")==0) {offset=5; type=token_t::SABS;}
-        else if(input.find("smax")==0) {offset=5; type=token_t::SMAX;}
-        else if(input.find("smin")==0) {offset=5; type=token_t::SMIN;}
-        else if(input.find("min")==0) {offset=4; type=token_t::MIN;}
-        else if(input.find("mean")==0) {offset=5; type=token_t::MEAN;}
-        else if(input.find("median")==0) {offset=7; type=token_t::MEDIAN;}
-        else if(input.find("stdev")==0) {offset=6; type=token_t::STDEV;}
-        else if(input.find("rndint")==0) {offset=7; type=token_t::RNDINT;}
-        else if(input.find("rndsel")==0) {offset=7; type=token_t::RNDSEL;}
-        else return token_t::INVALID;
+        token_t type{token_t::INVALID};
 
+        for(size_t i{MAXKEYWORDLENGTH}; i>0; i--)
+        {
+            if(globals::multiArgFunctions.find(input.substr(0,i))!=globals::multiArgFunctions.end())
+            {
+                type=globals::multiArgFunctions.find(input.substr(0,i))->second;
+                offset=globals::multiArgFunctions.find(input.substr(0,i))->first.length()+1;
+                break;
+            }
+        }
+        if(type==token_t::INVALID) return type;
         for(size_t i{offset}; i<input.length(); i++)
         {
             tokenValue.push_back(input.at(i));
@@ -480,50 +498,6 @@ class Token
         else for(size_t i{4}; i<input.length(); i++) tokenValue.push_back(input.at(i));
         return true;
     }    
-    ///////////////////////////////////////////////
-    bool isRootArgRight(std::string &input)
-    {
-        if(input.find("root,")!=0) return false;
-        
-        for(size_t i{5}; i<input.length(); i++)
-        {
-            tokenValue.push_back(input.at(i));
-        }
-        return true;
-    }
-    ///////////////////////////////////////////////
-    bool isRootArgLeft(std::string &input)
-    {
-        if(input.find("root(") != 0) return false;
-        
-        for(size_t i{5}; i<input.length(); i++)
-        {
-            tokenValue.push_back(input.at(i));
-        }
-        return true;
-    }
-    ///////////////////////////////////////////////
-    bool isLogArgRight(std::string &input)
-    {
-        if(input.find("log,")!=0) return false;
-        
-        for(size_t i{4}; i<input.length(); i++)
-        {
-            tokenValue.push_back(input.at(i));
-        }
-        return true;
-    }
-    ///////////////////////////////////////////////
-    bool isLogArgLeft(std::string &input)
-    {
-        if(input.find("log(") != 0) return false;
-        
-        for(size_t i{4}; i<input.length(); i++)
-        {
-            tokenValue.push_back(input.at(i));
-        }
-        return true;
-    }
     ///////////////////////////////////////////////
     static bool isSubexpr(std::string &input)
     {
@@ -555,9 +529,9 @@ class Token
         if(type==token_t::NUMBER || type==token_t::VARIABLE || type==token_t::CONSTANT) return tokenCategory_t::NUMBER;
 
         else if(type==token_t::SUBEXPR ||
-                type==token_t::ROOTARGLEFT || type==token_t::ROOTARGRIGHT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS ||
-                type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEV || type==token_t::GCF || type==token_t::LCM || type==token_t::DERIVE || type==token_t::MIX ||
-                type==token_t::LOGARGLEFT || type==token_t::LOGARGRIGHT || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL) return tokenCategory_t::SUBEXPR;
+                type==token_t::ROOT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS || type==token_t::IF ||
+                type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DERIVE || type==token_t::MIX ||
+                type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL) return tokenCategory_t::SUBEXPR;
 
         else if(type==token_t::FUNCTION) return tokenCategory_t::FUNCTION;
 
@@ -619,7 +593,7 @@ class Token
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Token> getTokens(const std::string&, const std::string &previousResult="nan", bool resetFirstRun=false);
+std::vector<Token> getTokens(const std::string&, bool resetFirstRun=false);
 void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount=SIZE_MAX);
 void getVariableArgs(std::vector<Token>&, Options&);
 
@@ -627,21 +601,25 @@ template <typename T = cpp_dec_float_100> T calculation(std::vector<Token>, cons
 std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber);
 
 template <typename T = cpp_dec_float_100> T evaluateAbs(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateRoot(Token denominator, Token &enumerator, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateLog(Token denominatorArg, Token &enumeratorArg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateIf(Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateLog(Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateRoot(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateUnary(Token&, Token&, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateBinary(Token&, Token&, Token&, const T xValue);
 
 template <typename T = cpp_dec_float_100> T evaluateMean(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateMedian(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateStdev(Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateStdevp(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateRndsel(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateMax(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLeast(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateGcf(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLcm(Token &arg, const T xValue);
 
-template <typename T = cpp_dec_float_100> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults);
+template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval=SIZE_MAX);
+
+
+template <typename T> Point decimalToFraction(T enumerator);
 
 bool addIdentifier(Variable newConstant);
 bool addIdentifier(Alias newAlias);
@@ -661,8 +639,8 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
     bool firstPass{true};
     std::ostringstream resultAsOSStream;
     resultAsOSStream.precision(100);
-    std::string previousResult="nan";
-    if(options.ans!="") previousResult=options.ans;
+    globals::previousResult="nan";
+    if(options.ans!="") globals::previousResult=options.ans;
     std::cout.precision(MAXOUTPUTPRECISION);
     resultAsOSStream.precision(MAXOUTPUTPRECISION);
 
@@ -768,7 +746,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             equation.clear();
             return false;
         }
-        std::vector<Token> tokens = getTokens(equation,previousResult);
+        std::vector<Token> tokens = getTokens(equation);
 
         // Add identifiers
         for(size_t i{}; i<tokens.size() && canDeclareIdentifiers; i++)
@@ -830,7 +808,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 else result+="Cannot duplicate names or assign nan\n";
 
                 tokens.erase(tokens.begin()+i,tokens.begin()+j-i);
-                previousResult=resultAsOSStream.str();
+                // globals::previousResult=resultAsOSStream.str();
                 resultAsOSStream.str("");
                 resultAsOSStream.clear();
                 i--;
@@ -839,13 +817,27 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
 
         bool hasX{};
         
-        if(tokens.size()==0) goto cleanup;
+        if(tokens.size()==0) 
+        {
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+            equation.clear();
+            tokens.clear();
+            options.graph=false;
+            firstPass=false;
+            globals::tokenMemory.clear();
+            getTokens("",true);
+
+            userAliases=globals::userAliases;
+            userVariables=globals::userVariables;
+            return false;
+        }
         // if(canDeclareIdentifiers) return false;
 
         for(int i{}; i<equation.length(); i++)
         {
             if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) hasX=true;
-            if(i>1&&equation.at(i)=='x' && equation.find("max",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) hasX=true;
+            if(i>1&&equation.at(i)=='x' && equation.find("max",i-2)!=i-2 && equation.find("mix",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) hasX=true;
         }
         if(equation.at(0)=='x') hasX=true;
 
@@ -855,19 +847,19 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
 
             if(resultAsOSStream.str().find("nan")!=std::string::npos)
             {
-                previousResult="nan";
+                globals::previousResult="nan";
                 resultAsOSStream.str("");
                 resultAsOSStream.clear();
                 resultAsOSStream<<"Not a Number";
             }
             else if(resultAsOSStream.str()=="-0")
             {
-                previousResult='0';
+                globals::previousResult='0';
                 resultAsOSStream.str("");
                 resultAsOSStream.clear();
                 resultAsOSStream<<"0";               
             }
-            else previousResult=resultAsOSStream.str();
+            else globals::previousResult=resultAsOSStream.str();
 
             for(size_t i{}; i<tokens.size(); i++)
             {
@@ -893,9 +885,6 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             {
                 result+=equation+" = "+resultAsOSStream.str()+'\n';
             }
-
-            resultAsOSStream.str("");
-            resultAsOSStream.clear();
         }
         else if(!options.graph && !(canDeclareIdentifiers && !passedCalculationsFile))
         {
@@ -915,7 +904,6 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, xValue);
                 if(resultAsOSStream.str().find("nan")!=std::string::npos)
                 {
-                    previousResult="nan";
                     resultAsOSStream.str("");
                     resultAsOSStream.clear();
                     continue;
@@ -925,9 +913,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                     resultAsOSStream.str("");
                     resultAsOSStream.clear();       
                     resultAsOSStream<<"0";      
-                    previousResult="0"; 
                 }
-                else previousResult=resultAsOSStream.str();
                 for(size_t i{}; i<tokens.size(); i++)
                 {
                     if ((tokens.at(i).value()=="<" || 
@@ -978,10 +964,18 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 }
             }    
         }
+        if(!hasX && options.showFractions && isNumber(resultAsOSStream.str()))
+        {
+            Point frac = decimalToFraction(std::stod(resultAsOSStream.str()));
+            resultAsOSStream.str("");
+            resultAsOSStream<<frac.x<<'/'<<frac.y;
+
+            if(abs(frac.x)!=INFINITY && frac.y!=1 && resultAsOSStream.str().length()<12 && equation!=resultAsOSStream.str()) result=resultAsOSStream.str();
+        }
 
         if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile))
         {
-            std::string addToHistory = '\n'+equation+" = "+previousResult;
+            std::string addToHistory = '\n'+equation+" = "+globals::previousResult;
             if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
         }
         cleanup:
@@ -991,10 +985,12 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
         tokens.clear();
         options.graph=false;
         firstPass=false;
-        getTokens("",previousResult,true);
+        globals::tokenMemory.clear();
+        getTokens("",true);
 
         userAliases=globals::userAliases;
         userVariables=globals::userVariables;
+
 
         return false;
 }
@@ -1004,17 +1000,10 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
 std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
 {
     if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<float>(globals::aroundLeniency.xStep)*5;
-
     std::vector<Point> points;
-    // bool calculateIntegers{true};
-    // if(globals::aroundLeniency.xStep>0.5) calculateIntegers=false;
     for(;xValue<xValueMax; xValue+=static_cast<float>(globals::aroundLeniency.xStep))
     {
         points.emplace_back(xValue,calculation<double>(tokens,xValue));
-        // if(xValue-round(xValue)>(-globals::aroundLeniency.xStep) && xValue-round(xValue)<0 && calculateIntegers)
-        // {
-        //     points.emplace_back(xValue,calculation<double>(tokens,round(xValue),false));
-        // }
     }
     return points;
 }
@@ -1088,8 +1077,12 @@ void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Token> getTokens(const std::string &input, const std::string& previousResult, bool resetFirstRun)
+std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
 {
+    if(globals::tokenMemory.find(input)!=globals::tokenMemory.end())
+    {
+        return globals::tokenMemory.find(input)->second;
+    }
     static bool firstRun{true};
     if(resetFirstRun)
     {
@@ -1097,7 +1090,7 @@ std::vector<Token> getTokens(const std::string &input, const std::string& previo
         return std::vector<Token>();
     }
     static std::string_view lastSeenResult{};
-    if(previousResult!="nan") lastSeenResult=previousResult;
+    if(globals::previousResult!="nan") lastSeenResult=globals::previousResult;
     int nestingLevel{};
     int absNestingLevel{};
     int nestingOfFunction{};
@@ -1153,92 +1146,27 @@ std::vector<Token> getTokens(const std::string &input, const std::string& previo
             currentToken.push_back(input.at(i));
         }
 
-        // Parse root()
-        if(currentToken=="" && input.find("root(",i)==i) for(; i<input.length(); i++)
-        {
-            if(!inFunctionCall)
-            {
-                inFunctionCall=true;
-                startOfFunction=i;
-                i+=5;
-                nestingLevel++;
-                currentToken.append("root(");
-                nestingOfFunction=nestingLevel;
-                if(i==input.length()) continue;
-            }
-            if(inFunctionCall && nestingLevel==nestingOfFunction && input.at(i)==',' && rootHasTwoArgs==false) 
-            {
-                rootHasTwoArgs=true;
-                endOfFirstArg=i;
-                tokens.emplace_back(input.substr(startOfFunction,i-startOfFunction));
-            }
-            else if(inFunctionCall && ((nestingLevel<=nestingOfFunction && input.at(i)==')')||i==input.length()-1) && rootHasTwoArgs==false)
-            {
-                tokens.emplace_back("root,"+input.substr(startOfFunction+5/*char after root(<-*/,i-startOfFunction-4));
-                break;
-            }
-            else if(inFunctionCall && ((nestingLevel<=nestingOfFunction && input.at(i)==')')||i==input.length()-1) && rootHasTwoArgs==true)
-            {
-                tokens.emplace_back("root"+input.substr(endOfFirstArg,i-endOfFirstArg+1));
-                break;
-            }
-            if(input.at(i)==')') nestingLevel--;
-            else if(input.at(i)=='(') nestingLevel++;
-        }
-
-        // Parse log()
-        if(currentToken=="" && input.find("log(",i)==i) for(; i<input.length(); i++)
-        {
-            if(!inFunctionCall)
-            {
-                if(input.find("log(", i)==i)
-                {
-                    inFunctionCall=true;
-                    startOfFunction=i;
-                    i+=4;
-                    nestingLevel++;
-                    currentToken.append("log(");
-                    nestingOfFunction=nestingLevel;
-                    if(i==input.length()) continue;
-                }
-                else continue;
-            }
-            if(inFunctionCall && nestingLevel==nestingOfFunction && input.at(i)==',' && logHasTwoArgs==false) //std::cout<<input.substr(startOfFunction,i-startOfFunction+1);
-            {
-                logHasTwoArgs=true;
-                endOfFirstArg=i;
-                tokens.emplace_back(input.substr(startOfFunction,i-startOfFunction));
-            }
-            else if(inFunctionCall && ((nestingLevel<=nestingOfFunction && input.at(i)==')')||i==input.length()-1) && logHasTwoArgs==false)
-            {
-                tokens.emplace_back("log,"+input.substr(startOfFunction+4/*char after log(<-*/,i-startOfFunction-3));
-                break;
-            }
-            else if(inFunctionCall && ((nestingLevel<=nestingOfFunction && input.at(i)==')')||i==input.length()-1) && logHasTwoArgs==true)
-            {
-                tokens.emplace_back("log"+input.substr(endOfFirstArg,i-endOfFirstArg+1));
-                break;
-            }
-            if(input.at(i)==')') nestingLevel--;
-            else if(input.at(i)=='(') nestingLevel++;
-        }
-
         // Parse MultiArg Functions
         if(!inFunctionCall && input.find("mean(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mean",i,inFunctionCall);
         else if(!inFunctionCall && input.find("derive(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"derive",i,inFunctionCall);
         else if(!inFunctionCall && input.find("median(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"median",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("stdev(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"stdev",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("stdevp(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"stdevp",i,inFunctionCall);
         else if(!inFunctionCall && input.find("max(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"max",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("sabs(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sabs",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("sabs(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sabs",i,inFunctionCall,2);
+        else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall,3);
+        else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall,3);
         else if(!inFunctionCall && input.find("gcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcf",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("hcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcf",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("hcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcd",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("gcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcd",i,inFunctionCall);
         else if(!inFunctionCall && input.find("mix(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mix",i,inFunctionCall);
         else if(!inFunctionCall && input.find("lcm(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"lcm",i,inFunctionCall);
         else if(!inFunctionCall && input.find("min(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"min",i,inFunctionCall);
         else if(!inFunctionCall && input.find("rndsel(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndsel",i,inFunctionCall);
         else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall,2);
-
+        else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall,2);
+        else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall,2);
+        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall,3);
 
         // Parse Subexpression
         if(currentToken=="" && !inFunctionCall && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1343,6 +1271,7 @@ std::vector<Token> getTokens(const std::string &input, const std::string& previo
     }
     if(currentToken!="") tokens.emplace_back(currentToken);
     if(firstRun) firstRun=false;
+    globals::tokenMemory.emplace(input,tokens);
     return tokens;
 }
 
@@ -1384,14 +1313,12 @@ T calculation(std::vector<Token> tokens, const T xValue)
         // Case example: 3(expr) -> 3 h* (expr)
         if((tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR || tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION) &&
             tokens.at(i-1).typeCategory()!=tokenCategory_t::OPERATOR &&
-            tokens.at(i-1).typeCategory()!=tokenCategory_t::FUNCTION &&
-            tokens.at(i-1).type()!=token_t::ROOTARGLEFT && tokens.at(i-1).type()!=token_t::LOGARGLEFT) tokens.emplace(tokens.begin()+i++, Token("h*"));
+            tokens.at(i-1).typeCategory()!=tokenCategory_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: (expr)3 -> (expr) h* 3 
         if(tokens.at(i-1).typeCategory()==tokenCategory_t::SUBEXPR && 
            tokens.at(i).typeCategory()!=tokenCategory_t::OPERATOR &&
-           tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR &&
-           tokens.at(i-1).type()!=token_t::ROOTARGLEFT && tokens.at(i-1).type()!=token_t::LOGARGLEFT) tokens.emplace(tokens.begin()+i++, Token("h*"));
+           tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3-3 -> 3+-3, (expr)-3 -> (expr)+-3
         // Reason: Binary minus is a lie lol
@@ -1408,6 +1335,10 @@ T calculation(std::vector<Token> tokens, const T xValue)
 
     for(size_t i{}; i<tokens.size(); i++)
     {
+        if(tokens.at(i).value()=="ans")
+        {
+            tokens.at(i)=Token(globals::previousResult);
+        }
         if(tokens.at(i).value()=="rnd" || tokens.at(i).value()=="rndint")
         {
             std::uniform_real_distribution<> doubleDist(0,1);
@@ -1422,8 +1353,6 @@ T calculation(std::vector<Token> tokens, const T xValue)
             resultAsOSStream.clear();
         }
     }
-    if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
-    if(tokens.size()==1 && tokens.at(0).type()==token_t::INVALID) return NAN;
     
     for(int i{1}; i<tokens.size(); i++)
     {
@@ -1445,7 +1374,8 @@ T calculation(std::vector<Token> tokens, const T xValue)
 
         else break;
     }
-
+    if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
+    if(tokens.size()==1 && tokens.at(0).type()==token_t::INVALID) return NAN;
     size_t pass{};
     size_t failedPass{LOGICALS};
     for(; pass<=LOGICALS; pass++)
@@ -1459,7 +1389,7 @@ T calculation(std::vector<Token> tokens, const T xValue)
                 else if(tokens.at(i).type()==token_t::DERIVE) evaluatedSubexpr=evaluateDerive(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::MEAN) evaluatedSubexpr=evaluateMean(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::MEDIAN) evaluatedSubexpr=evaluateMedian(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::STDEV) evaluatedSubexpr=evaluateStdev(tokens.at(i), xValue);
+                else if(tokens.at(i).type()==token_t::STDEVP) evaluatedSubexpr=evaluateStdevp(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::MAX) evaluatedSubexpr=evaluateMax(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::MIX) evaluatedSubexpr=evaluateMix(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::SABS) evaluatedSubexpr=evaluateSabs(tokens.at(i), xValue);
@@ -1471,32 +1401,12 @@ T calculation(std::vector<Token> tokens, const T xValue)
                 else if(tokens.at(i).type()==token_t::RNDSEL) evaluatedSubexpr=evaluateRndsel(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::RNDINT) evaluatedSubexpr=evaluateRndint(tokens.at(i), xValue);
                 else if(tokens.at(i).type()==token_t::ABS) evaluatedSubexpr=evaluateAbs(tokens.at(i), xValue);
+                else if(tokens.at(i).type()==token_t::ROOT) evaluatedSubexpr=evaluateRoot(tokens.at(i), xValue);
+                else if(tokens.at(i).type()==token_t::LOG) evaluatedSubexpr=evaluateLog(tokens.at(i), xValue);
+                else if(tokens.at(i).type()==token_t::IF) evaluatedSubexpr=evaluateIf(tokens.at(i), xValue);
 
-                else if(tokens.at(i).type()==token_t::ROOTARGRIGHT)
-                {
-                    if(i==0) evaluatedSubexpr=evaluateRoot(Token("0"),tokens.at(i), xValue);
-                    else evaluatedSubexpr=evaluateRoot(tokens.at(i-1),tokens.at(i), xValue);
-                    if(i>0 && tokens.at(i-1).type()==token_t::ROOTARGLEFT)
-                    {
-                        tokens.erase(tokens.begin()+i-1);
-                        i--;
-                    }
-                }
 
-                else if(tokens.at(i).type()==token_t::LOGARGRIGHT)
-                {
-                    if(i==0) evaluatedSubexpr=evaluateLog(Token("0"),tokens.at(i), xValue);
-                    else evaluatedSubexpr=evaluateLog(tokens.at(i-1),tokens.at(i), xValue);
-                    if(i>0 && tokens.at(i-1).type()==token_t::LOGARGLEFT)
-                    {
-                        tokens.erase(tokens.begin()+i-1);
-                        i--;
-                    }
-                }
-
-                if(tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR &&
-                   tokens.at(i).type()!=token_t::ROOTARGLEFT &&
-                   tokens.at(i).type()!=token_t::LOGARGLEFT)
+                if(tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR)
                 {
                     resultAsOSStream<<evaluatedSubexpr;
                     tokens.at(i)=Token(resultAsOSStream.str());
@@ -1771,7 +1681,7 @@ T evaluateMedian(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateStdev(Token &arg, const T xValue)
+T evaluateStdevp(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     evaluateArgs(arg,xValue,intermediateResults);
@@ -1780,14 +1690,21 @@ T evaluateStdev(Token &arg, const T xValue)
 
     if(intermediateResults.size()<2)
     {
-        // std::cerr<<"Did not supply at least 2 arguments for stdev()\n";
-        return NAN;
+        return 0;
     }
-    T summed{};
-    for(size_t i{1}; i<intermediateResults.size(); i++)
+    T summedIntermediates{};
+    for(size_t i{}; i<intermediateResults.size(); i++)
     {
-        summed=summed+pow(intermediateResults.at(i)-intermediateResults.at(0),2.0);
+        summedIntermediates+=intermediateResults.at(i);
     }
+    const T mean{summedIntermediates/intermediateResults.size()};
+    T summed{};
+    for(size_t i{}; i<intermediateResults.size(); i++)
+    {
+        summed+=pow(intermediateResults.at(i)-mean,2);
+    }
+
+
     return sqrt(summed/intermediateResults.size()); // Intellegre
 }
 
@@ -1861,11 +1778,11 @@ T evaluateGcf(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults)
+void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval)
 {
     std::string currentToken;
     int nestingLevel{};
-    for(size_t i{}; i<arg.value().length() && nestingLevel>=0; i++)
+    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && intermediateResults.size()<argsToEval; i++)
     {
         if(arg.value().at(i)=='(') nestingLevel++;
         else if(arg.value().at(i)==')') nestingLevel--;
@@ -1944,7 +1861,7 @@ T evaluateDerive(Token &arg, const T xValue)
     std::string currentToken;
     int nestingLevel{};
     T deriveStepSize = static_cast<T>(globals::aroundLeniency.xStep);
-    if(deriveStepSize<0.02) deriveStepSize=0.02;
+    if(deriveStepSize<0.05) deriveStepSize=0.05;
     for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && intermediateResults.size()<2; i++)
     {
         if(arg.value().at(i)=='(') nestingLevel++;
@@ -1987,9 +1904,10 @@ T evaluateSmax(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,intermediateResults,3);
     if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<3) return intermediateResults.at(0);
+    if(intermediateResults.size()<2) return intermediateResults.at(0);
+    if(intermediateResults.size()==2) intermediateResults.push_back(0.5);
     T maxArg = intermediateResults.at(0);
     if(intermediateResults.at(1)>maxArg) maxArg=intermediateResults.at(1);
     T enumerator = intermediateResults.at(2)-abs(intermediateResults.at(0)-intermediateResults.at(1));
@@ -2005,9 +1923,10 @@ T evaluateSmin(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,intermediateResults,3);
     if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<3) return intermediateResults.at(0);
+    if(intermediateResults.size()<2) return intermediateResults.at(0);
+    if(intermediateResults.size()==2) intermediateResults.push_back(0.5);
     T min = intermediateResults.at(0);
     if(intermediateResults.at(1)<min) min=intermediateResults.at(1);
     T enumerator = intermediateResults.at(2)-abs(intermediateResults.at(0)-intermediateResults.at(1));
@@ -2022,9 +1941,9 @@ T evaluateMix(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,intermediateResults,3);
     if(intermediateResults.size()==0) return NAN;
-    else if(intermediateResults.size()<3) return intermediateResults.at(0);
+    else if(intermediateResults.size()<2) return intermediateResults.at(0);
     else if(intermediateResults.at(2)>=1) return intermediateResults.at(1);
     else if(intermediateResults.at(2)<=0) return intermediateResults.at(0);
     
@@ -2038,9 +1957,9 @@ T evaluateSabs(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,intermediateResults,2);
     if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<2) return intermediateResults.at(0);
+    if(intermediateResults.size()<2) intermediateResults.emplace_back(0.1); // Default argument
     T enumerator = intermediateResults.at(1)-abs(intermediateResults.at(0));
     if(enumerator<0) enumerator=0;
     return abs(intermediateResults.at(0))+(pow(enumerator,2)/(2*intermediateResults.at(1)));
@@ -2049,48 +1968,66 @@ T evaluateSabs(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateSsat(Token &arg, const T xValue)
+T evaluateIf(Token &arg, const T xValue)
 {
     std::vector<T> intermediateResults;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,intermediateResults,3);
     if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<2) return intermediateResults.at(0);
-    return (1+sqrt(pow(intermediateResults.at(0),2)+intermediateResults.at(1))-sqrt(pow(intermediateResults.at(0)-1,2)+intermediateResults.at(1)))/2;
+    if(intermediateResults.size()==1) return !(!intermediateResults.at(0));
+    if(intermediateResults.size()==2)
+    {
+        if(intermediateResults.at(0)) return intermediateResults.at(1);
+        else return 0;
+    }
+    else 
+    {
+        if(intermediateResults.at(0)) return intermediateResults.at(1);
+        else return intermediateResults.at(2);
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+template <typename T>
+T evaluateRoot(Token &arg, const T xValue)
+{
+    std::vector<T> intermediateResults;
+    std::string currentToken;
+    evaluateArgs(arg,xValue,intermediateResults,2);
+    if(intermediateResults.size()==0) return NAN;
+    if(intermediateResults.size()==1) intermediateResults.emplace(intermediateResults.begin(),2); // Default argument
+
+    std::swap(intermediateResults.at(0),intermediateResults.at(1)); // My brain is too fried to change the code below. Don't kill me.
+    
+    Point frac {decimalToFraction(intermediateResults.at(1))};
+    if(abs(frac.x)!=INFINITY)
+    {
+        if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && intermediateResults.at(0)<0)
+        {
+            return pow(-intermediateResults.at(0),1/intermediateResults.at(1));
+        }
+        else if(fmod(frac.x,2)==1 && fmod(frac.y,2)==1 && intermediateResults.at(0)<0)
+        {
+            return -pow(-intermediateResults.at(0),1/intermediateResults.at(1));
+        }
+    }
+    return pow(intermediateResults.at(0), 1/intermediateResults.at(1));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateRoot(Token denominatorArg, Token &enumeratorArg, const T xValue)
+T evaluateLog(Token &arg, const T xValue)
 {
-    T denominator{};
-
-    std::vector<Token> tokenToEval{denominatorArg};
-    if(denominatorArg.type()!=token_t::ROOTARGLEFT) denominator=2;
-    else denominator=calculation<T>(getTokens(denominatorArg.value()), xValue);
-
-    tokenToEval.at(0)=enumeratorArg;
-    T enumerator=calculation<T>(getTokens(enumeratorArg.value()), xValue);
-
-    if(denominator==static_cast<int>(denominator) && static_cast<int>(denominator)%2==0 && enumerator<0) return NAN;
-
-    if(enumerator<0 && false) return -pow(-enumerator,1/denominator);
-    else return pow(enumerator, 1/denominator);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-T evaluateLog(Token denominatorArg, Token &enumeratorArg, const T xValue)
-{
-    T denominator{};
-
-    std::vector<Token> tokenToEval{denominatorArg};
-    if(denominatorArg.type()!=token_t::LOGARGLEFT) denominator=10;
-    else denominator=calculation<T>(getTokens(denominatorArg.value()), xValue);
-
-    return log(calculation<T>(getTokens(enumeratorArg.value()), xValue))/log(denominator);
+    std::vector<T> intermediateResults;
+    std::string currentToken;
+    evaluateArgs(arg,xValue,intermediateResults,2);
+    if(intermediateResults.size()==0) return NAN;
+    if(intermediateResults.size()==1) intermediateResults.emplace(intermediateResults.begin(),10); // Default argument
+    return log(intermediateResults.at(1))/log(intermediateResults.at(0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2118,7 +2055,22 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
     else if(operation.value()=="h*") return numberLeft*numberRight;
     else if(operation.value()=="*") return numberLeft*numberRight;
     else if(operation.value()=="/") return numberLeft/numberRight;
-    else if(operation.value()=="^" || operation.value()=="**") return pow(numberLeft, numberRight);
+    else if(operation.value()=="^" || operation.value()=="**") 
+    {
+        Point frac {decimalToFraction(numberRight)};
+        if(abs(frac.x)!=INFINITY)
+        {
+            if(fmod(frac.y,2)==1 && fmod(frac.x,2)==0 && numberLeft<0)
+            {
+                return pow(-numberLeft,numberRight);
+            }
+            else if(fmod(frac.y,2)==1 && fmod(frac.x,2)==1 && numberLeft<0)
+            {
+                return -pow(-numberLeft,numberRight);
+            }
+        }
+        return pow(numberLeft, numberRight);
+    }
     else if(operation.value()=="mod" || operation.value()=="%") return fmod(numberLeft,numberRight);
     else if(operation.value()=="nPk") return (tgamma(numberLeft+1)/tgamma(numberLeft-numberRight+1));
     else if(operation.value()=="nCk") return (tgamma(numberLeft+1)/(tgamma(numberRight+1)*tgamma(numberLeft-numberRight+1)));
@@ -2309,6 +2261,68 @@ bool replaceAliases(std::string &equation)
         }
     }
     return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+long long unguardedGcd(long long a, long long b)
+{
+    if(b==0) return a;
+    else return unguardedGcd(b,a%b);
+}
+
+template <typename T>
+Point decimalToFraction(T enumerator)
+{
+    std::string fraction;
+    std::string number;
+    std::ostringstream asOSStream;
+    asOSStream.precision(15);
+    asOSStream<<enumerator;
+    number=asOSStream.str();
+    T denominator{1};
+
+    for(size_t i{}; enumerator!=round(enumerator); i++)
+    {
+        enumerator*=10;
+        denominator*=10;
+    }
+
+
+    size_t length = number.substr(number.find('.')+1).length();
+    std::string pattern=number.substr(number.find('.')+1,length/2-1);
+    size_t patternInstancesFound{};
+    for(size_t i{}; i<number.length() && pattern!=""; i++)
+    {
+        if(number.find(pattern,i)==i)
+        {
+            patternInstancesFound++;
+            i+=pattern.length()-1;
+        }
+    }
+
+    
+    if(patternInstancesFound>1)
+    {
+        if constexpr (std::is_same<double, T>()) 
+        {
+            enumerator=std::stold(number.substr(0,number.find('.')));
+        }
+        else enumerator=static_cast<cpp_dec_float_100>(number.substr(0,number.find('.')));
+        denominator=pow(10,pattern.length())-1;
+        enumerator=(enumerator*denominator)+std::stoll(pattern);
+    }
+    long long enumeratori=static_cast<double>(enumerator);
+    long long denominatori=static_cast<double>(denominator);
+    long long gcf = unguardedGcd(enumeratori,denominatori);
+
+
+    enumerator/=gcf;
+    denominator/=gcf;
+
+    return Point(static_cast<double>(enumerator),static_cast<double>(denominator));
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

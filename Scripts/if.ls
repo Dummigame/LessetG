@@ -2,7 +2,7 @@ let i=1
 2+2
 let i=i+1
 
-if i<10
+IF i<10
     i<10
     jump 3
 endif

@@ -531,6 +531,7 @@ int main(int, char**)
     float xStepFloat{0.1};
     int aroundTruthinessLeniency{2};
     bool followImplicitMultiplicationPriorityConvention{true};
+    bool showFractions{true};
 
     bool interpolateDiscontinuities{};
     bool recalculateGraphs{};
@@ -714,7 +715,7 @@ int main(int, char**)
                                     }
 
 
-                                    if(scriptEquation.find("if")==0)
+                                    if(scriptEquation.find("IF")==0)
                                     {
                                         std::string subEquation=scriptEquation.substr(2);
                                         if(subEquation!="")
@@ -741,7 +742,7 @@ int main(int, char**)
                                             }
                                             if(calculationsFile.peek()=='\n') for(; calculationsFile.peek()=='\n'; calculationsFile.seekg(static_cast<size_t>(calculationsFile.tellg())+1));
                                             skip=true;
-                                            if(conditionTrue) instances.at(selectedInstance).lastScriptOutput+="beginif\n";
+                                            if(conditionTrue) instances.at(selectedInstance).lastScriptOutput+="beginIF\n";
                                             continue;
                                         }
                                     }
@@ -1092,33 +1093,6 @@ int main(int, char**)
                 if(ImGui::BeginMenu("Options"))
                 {
 
-                    ImGui::SliderInt("Matching digits for ≈ being true",&aroundTruthinessLeniency,0,10);
-                    ImGui::SetItemTooltip("When 2 values are close to equal, how many digits after the decimal point need to match for ≈ to be true?\nExample: 0≈0.1 = true when this setting is 0. However, 0≈0.11 = false.");
-                    if(aroundTruthinessLeniency<0) aroundTruthinessLeniency=0;
-                    if(aroundTruthinessLeniency>98) aroundTruthinessLeniency=98;
-                    options.aroundTruthinessLeniency=aroundTruthinessLeniency;
-
-
-                    if(maxIndividualGraphPointsMultiplier>5) maxIndividualGraphPointsMultiplier=5;
-                    if(maxIndividualGraphPointsMultiplier<1) maxIndividualGraphPointsMultiplier=1;
-                    std::string shownResolution="Medium";
-                    
-                    switch(maxIndividualGraphPointsMultiplier)
-                    {
-                        case 1: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/2; shownResolution="Low"; break;}
-                        case 2: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE; shownResolution="Medium"; break;}
-                        case 3: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE*2; shownResolution="High"; break;}
-                        case 4: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE*4; shownResolution="Overkill"; break;}
-                        case 5: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/4; shownResolution="Too Low"; break;}
-
-                        default: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/2; shownResolution="Low"; break;}
-                    }
-                    if(ImGui::SliderInt("Resolution for graphing",&maxIndividualGraphPointsMultiplier,1,5,shownResolution.c_str()))
-                    {
-                        recalculateGraphs=true;
-                    }
-                    ImGui::SetItemTooltip("Changes how precisely graphs are calculated, how many points per graph.\nOverkill might be useful for detailed graphs.\nOnly use Too Low if you have many graphs, are creating insane functions or your computer sux.");
-
                     if(ImGui::BeginMenu("Calculations with x"))
                     {
                         ImGui::SliderFloat("Minimum x",&xMinFloat,-100,100);
@@ -1134,22 +1108,59 @@ int main(int, char**)
                         ImGui::EndMenu();
                     }
 
-                    if(ImGui::Checkbox("Interpolate discontinuities in functions",&interpolateDiscontinuities))
+                    if(ImGui::BeginMenu("Graphs"))
                     {
-                        recalculateGraphs=true;
+                        if(maxIndividualGraphPointsMultiplier>5) maxIndividualGraphPointsMultiplier=5;
+                        if(maxIndividualGraphPointsMultiplier<1) maxIndividualGraphPointsMultiplier=1;
+                        std::string shownResolution="Medium";
+                        
+                        switch(maxIndividualGraphPointsMultiplier)
+                        {
+                            case 1: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/2; shownResolution="Low"; break;}
+                            case 2: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE; shownResolution="Medium"; break;}
+                            case 3: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE*2; shownResolution="High"; break;}
+                            case 4: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE*4; shownResolution="Overkill"; break;}
+                            case 5: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/4; shownResolution="Too Low"; break;}
+
+                            default: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/2; shownResolution="Low"; break;}
+                        }
+                        if(ImGui::SliderInt("Resolution for graphing",&maxIndividualGraphPointsMultiplier,1,5,shownResolution.c_str()))
+                        {
+                            recalculateGraphs=true;
+                        }
+                        ImGui::SetItemTooltip("Changes how precisely graphs are calculated, how many points per graph.\nOverkill might be useful for detailed graphs.\nOnly use Too Low if you have many graphs, are creating insane functions or your computer sux.");
+
+                        if(ImGui::Checkbox("Interpolate discontinuities in functions",&interpolateDiscontinuities))
+                        {
+                            recalculateGraphs=true;
+                        }
+                        ImGui::SetItemTooltip("This calculator is stupid and doesn't actually know where exactly a discontinuity in a function like 1/x is.\nThus, it tries to approximate it, but sometimes ends up creating visual artifacts in continuous functions like ∛x.");
+
+                        ImGui::Checkbox("Mark special points",&markSpecialPoints);
+                        ImGui::SetItemTooltip("Mark points where a function is zero, the point closest to the cursor, extremes.");
+
+                        options.interpolateDiscontinuities=interpolateDiscontinuities;
+
+                        ImGui::EndMenu();
                     }
-                    ImGui::SetItemTooltip("This calculator is stupid and doesn't actually know where exactly a discontinuity in a function like 1/x is.\nThus, it tries to approximate it, but sometimes ends up creating visual artifacts in continuous functions.");
 
+                    if(ImGui::BeginMenu("Other"))
+                    {
+                        ImGui::SliderInt("Matching digits for ≈ being true",&aroundTruthinessLeniency,0,10);
+                        ImGui::SetItemTooltip("When 2 values are close to equal, how many digits after the decimal point need to match for ≈ to be true?\nExample: 0≈0.1 = true when this setting is 0. However, 0≈0.11 = false.");
+                        if(aroundTruthinessLeniency<0) aroundTruthinessLeniency=0;
+                        if(aroundTruthinessLeniency>98) aroundTruthinessLeniency=98;
+                        options.aroundTruthinessLeniency=aroundTruthinessLeniency;
 
-                    ImGui::Checkbox("Mark special points",&markSpecialPoints);
-                    ImGui::SetItemTooltip("Mark points where a function is zero, the point closest to the cursor, extremes.");
-
-                    options.interpolateDiscontinuities=interpolateDiscontinuities;
-
-                    ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
-                    options.followImplicitMultiplicationPriorityConvention=followImplicitMultiplicationPriorityConvention;
-                    ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
-
+                        ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
+                        options.followImplicitMultiplicationPriorityConvention=followImplicitMultiplicationPriorityConvention;
+                        ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
+                        ImGui::SameLine();
+                        ImGui::Checkbox("Show fractions",&showFractions);
+                        options.showFractions=showFractions;
+                        ImGui::SetItemTooltip("Show some results as fractions instead of decimal numbers.");
+                        ImGui::EndMenu();
+                    }
                     
                     ImGui::EndMenu();
                 }
@@ -1204,7 +1215,7 @@ int main(int, char**)
                         ImGui::SetItemTooltip("Division... please not by 0. (/)");
 
                         if(ImGui::MenuItem("**")) ImGui::SetClipboardText("**");
-                        ImGui::SetItemTooltip("Exponentiation, undefined for negative left and decimal right. (^)");
+                        ImGui::SetItemTooltip("Exponentiation. Defined when needed... I hope. (^)");
 
                         if(ImGui::MenuItem("!")) ImGui::SetClipboardText("!");
                         ImGui::SetItemTooltip("Factorial. (Uses Gamma function)");
@@ -1231,7 +1242,7 @@ int main(int, char**)
                     }
                     if(ImGui::BeginMenu("Functions"))
                     {
-                        if(ImGui::BeginMenu("Roots"))
+                        if(ImGui::BeginMenu("Root"))
                         {
                             if(ImGui::MenuItem("√")) ImGui::SetClipboardText("√");
                             ImGui::SetItemTooltip("Square root (sqrt) function.");
@@ -1248,12 +1259,12 @@ int main(int, char**)
                         }
 
                         if(ImGui::BeginMenu("Logarithm"))
-                        {
-                            if(ImGui::MenuItem("log(")) ImGui::SetClipboardText("log(");
-                            ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
-                            
+                        {                      
                             if(ImGui::MenuItem("ln")) ImGui::SetClipboardText("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
+
+                            if(ImGui::MenuItem("log(")) ImGui::SetClipboardText("log(");
+                            ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
                             
                             ImGui::EndMenu();
                         }
@@ -1371,8 +1382,8 @@ int main(int, char**)
                             if(ImGui::MenuItem("median(")) ImGui::SetClipboardText("median(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns median, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("stdev(")) ImGui::SetClipboardText("stdev(");
-                            ImGui::SetItemTooltip("First argument is expected, rest is deviation, takes multiple arguments.");
+                            if(ImGui::MenuItem("stdevp(")) ImGui::SetClipboardText("stdevp(");
+                            ImGui::SetItemTooltip("Population standard deviation, takes multiple arguments.");
 
                             if(ImGui::MenuItem("gcf(")) ImGui::SetClipboardText("gcf(");
                             ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.");
@@ -1391,6 +1402,9 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Fun and Misc."))
                         {
+                            if(ImGui::MenuItem("if(")) ImGui::SetClipboardText("if(");
+                            ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
+
                             if(ImGui::MenuItem("rndint(")) ImGui::SetClipboardText("rndint(");
                             ImGui::SetItemTooltip("Takes a lower bound and upper bound, returns a random integer in range.");
 
@@ -1461,7 +1475,7 @@ int main(int, char**)
                         ImGui::SetItemTooltip("Logical or, returns true if either side is true. (OR)");
 
                         if(ImGui::MenuItem("∧")) ImGui::SetClipboardText("∧");
-                        ImGui::SetItemTooltip("Logical and, returns true if either side is true. (AND)");
+                        ImGui::SetItemTooltip("Logical and, returns true if both sides are true. (AND)");
 
                         if(ImGui::MenuItem("⊕")) ImGui::SetClipboardText("⊕");
                         ImGui::SetItemTooltip("Logical exclusive or, returns true if either side is true. (XOR)");
@@ -1497,9 +1511,9 @@ int main(int, char**)
                                     ImGui::EndMenu();
                                 }
 
-                                if(ImGui::BeginMenu("if"))
+                                if(ImGui::BeginMenu("IF"))
                                 {
-                                    ImGui::Text("Run a block of commands only if an expression following 'if' is true.\nEnd block with endif, no nested if statements are supported.");
+                                    ImGui::Text("Run a block of commands only if an expression following 'IF' is true.\nEnd block with endif, no nested IF statements are supported.\nThis is not the same as if( in the calculator.");
                                     ImGui::EndMenu();
                                 }
 
@@ -1543,9 +1557,6 @@ int main(int, char**)
                 else ImGui::Text("You are using the main instance.");
             }
             
-            ImGui::Text("Enter your equation:");               
-            ImGui::SameLine();
-            
             ImGui::SetNextItemWidth(io.DisplaySize.x/3);
             ImGui::InputText(" ",&equation);          // Call Lesset
             if(equation!="") nonEmptyEquation=equation;
@@ -1553,12 +1564,12 @@ int main(int, char**)
             std::string resultPlusEquals;
             if(equation!="") lastNonEmptyEquation=equation;
             else resultPlusEquals="";
-            ImGui::SameLine(io.DisplaySize.x/3+150);
+            ImGui::SameLine(io.DisplaySize.x/3+10);
             resultPlusEquals="  =  " + result;
 
             if(equation=="fps")
             {
-                resultPlusEquals = " = " + std::to_string(static_cast<int>(io.Framerate));
+                resultPlusEquals = "  =  " + std::to_string(static_cast<int>(1.0/io.DeltaTime));
             }
 
             if(ImGui::Button(resultPlusEquals.c_str()))
@@ -1572,7 +1583,7 @@ int main(int, char**)
                 
             }
 
-            if(graphsEquations.size()<MANYGRAPHS) ImGui::Text("");
+            if(graphsEquations.size()<MANYGRAPHS && instances.size()==1) ImGui::Text("");
 
 
 
@@ -1596,12 +1607,18 @@ int main(int, char**)
                 bool skipRestOfFrame{};
                 if(graphsEquations.size()!=0 || (previewGraph))
                 {
-
                     for(int i{}; i<graphsEquations.size();i++)
                     {
                         std::string graphEquationExpandedMacros = graphsEquations.at(i);
                         replaceAliases(graphEquationExpandedMacros, instances.at(selectedInstance));
-                        if(graphEquationExpandedMacros.find('x')==std::string::npos)
+                        bool hasX{};
+                        if(graphEquationExpandedMacros.length()>=1 && graphEquationExpandedMacros.at(0)=='x') hasX=true;
+                        for(int i{}; i<graphEquationExpandedMacros.length() && !hasX; i++)
+                        {
+                            if(i==1 && graphEquationExpandedMacros.at(1)=='x' && graphEquationExpandedMacros.find("exp",0)!=0) hasX=true;
+                            if(i>1&&graphEquationExpandedMacros.at(i)=='x' && graphEquationExpandedMacros.find("mix",i-2)!=i-2 && graphEquationExpandedMacros.find("max",i-2)!=i-2 && graphEquationExpandedMacros.find("exp",i-1)!=i-1) hasX=true;
+                        }
+                        if(!hasX)
                         {
                             graphsEquations.erase(graphsEquations.begin()+i);
                             i--;
@@ -1696,7 +1713,7 @@ int main(int, char**)
                         for(int i{}; i<previewNonEmptyGraphEquation.length(); i++)
                         {
                             if(i==1 && previewNonEmptyGraphEquation.at(1)=='x' && previewNonEmptyGraphEquation.find("exp",0)!=0) hasX=true;
-                            if(i>1&&previewNonEmptyGraphEquation.at(i)=='x' && previewNonEmptyGraphEquation.find("max",i-2)!=i-2 && previewNonEmptyGraphEquation.find("exp",i-1)!=i-1) hasX=true;
+                            if(i>1&&previewNonEmptyGraphEquation.at(i)=='x' && previewNonEmptyGraphEquation.find("mix",i-2)!=i-2 && previewNonEmptyGraphEquation.find("max",i-2)!=i-2 && previewNonEmptyGraphEquation.find("exp",i-1)!=i-1) hasX=true;
                         }
                         if(previewNonEmptyGraphEquation.at(0)=='x') hasX=true;
 
@@ -1708,7 +1725,7 @@ int main(int, char**)
 
                             if(updatePreviewGraph || !(prevLimits.X.Min == limits.X.Min && prevLimits.X.Max == limits.X.Max))
                             {
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision*averagedPrecisionDivisor,static_cast<size_t>(aroundTruthinessLeniency),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*8,static_cast<size_t>(aroundTruthinessLeniency),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
                                 lessetB::mainLoop(graphOptions,true,false,previewNonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
                                 liveGraphPoints.first=lessetB::globals::points.first;
                                 liveGraphPoints.second=lessetB::globals::points.second;
@@ -1904,7 +1921,7 @@ int main(int, char**)
                         }
                     } 
                 
-                    for(size_t j{}; j<graphsPoints.first.size(); j++)
+                    for(size_t j{}; j<graphsPoints.first.size(); j++) // Disconnect discontinuities and hand points to ImPlot
                     {
                         
                         if(graphsEquations.size()>=MANYGRAPHS && timeStationary<HIGHPRECISIONDRAWDELAY || graphsEquations.size()>=MANYGRAPHS && !drawManyGraphs) break;
@@ -1927,7 +1944,7 @@ int main(int, char**)
                                     const float difference = (graphsPoints.second.at(j).at(i+1)-graphsPoints.second.at(j).at(i))/(graphsPoints.first.at(j).at(i+1)-graphsPoints.first.at(j).at(i));
                                     const float nextDifference = (graphsPoints.second.at(j).at(i+2)-graphsPoints.second.at(j).at(i+1))/(graphsPoints.first.at(j).at(i+2)-graphsPoints.first.at(j).at(i+1));
 
-                                    if(abs(difference-previousDifference)>abs(ImPlot::GetPlotLimits().Y.Max-ImPlot::GetPlotLimits().Y.Min)*30/abs(ImPlot::GetPlotLimits().X.Max-ImPlot::GetPlotLimits().X.Min) && !interpolateDiscontinuities)
+                                    if(abs(difference-previousDifference)>abs(limits.Y.Max-limits.Y.Min)*30/abs(limits.X.Max-limits.X.Min) && !interpolateDiscontinuities)
                                     {
                                         if(!isNoisy(graphsPoints.first.at(j),graphsPoints.second.at(j),i,maxIndividualGraphPointsMultiplier))
                                         {
@@ -1984,8 +2001,8 @@ int main(int, char**)
                                         ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(0,60-textAbove*120));
                                     }
                                 }
-                                else if(((graphsPoints.second.at(j).at(i)>0 && graphsPoints.second.at(j).at(i+increment)<=0) ||
-                                         (graphsPoints.second.at(j).at(i)<0 && graphsPoints.second.at(j).at(i+increment)>=0)) &&
+                                else if(((graphsPoints.second.at(j).at(i)>0 && graphsPoints.second.at(j).at(i+increment)<0) ||
+                                         (graphsPoints.second.at(j).at(i)<0 && graphsPoints.second.at(j).at(i+increment)>0)) &&
                                         (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50))
                                 {
                                     xPreviousPointMarked=graphsPoints.first.at(j).at(i);
