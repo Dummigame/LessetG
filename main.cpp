@@ -55,7 +55,7 @@ static bool                     g_SwapChainRebuild = false;
 struct Instance
 {
     std::string name;
-    std::vector<lessetB::Variable> userVariables;
+    std::vector<lessetB::Variable> userVariables{lessetB::Variable("slider","0")};
     std::vector<lessetB::Alias> userAliases;
     std::string lastScriptOutput;
 };
@@ -485,6 +485,9 @@ int main(int, char**)
     // Our state
     ImVec4 clear_color = ImVec4(0.f, 0.f, 0.f, 0.f);
 
+    float sliderValue{};
+    bool animateSlider{};
+    bool showSliderOption{};
     std::string result;
     std::string newIdentifierNameVariable{};
     std::string newIdentifierValueVariable{};
@@ -499,6 +502,7 @@ int main(int, char**)
     std::string nonEmptyEquation{};
     float pastPrecisionDivisors[100]{};
     bool graph{};
+    
     bool previewGraph{};
     bool updatePreviewGraph{};
     bool markSpecialPoints{true};
@@ -520,7 +524,7 @@ int main(int, char**)
 
     bool hasRunScriptInMain{};
 
-    std::vector<Instance> instances;
+    std::vector<Instance> instances{};
     instances.emplace_back("main"); 
 
     std::pair<std::vector<std::vector<double>>,std::vector<std::vector<double>>> graphsPoints{};
@@ -529,7 +533,7 @@ int main(int, char**)
     float xMinFloat{};
     float xMaxFloat{};
     float xStepFloat{0.1};
-    int aroundTruthinessLeniency{2};
+    float aroundTruthinessLeniency{0.01};
     bool followImplicitMultiplicationPriorityConvention{true};
     bool showFractions{true};
 
@@ -728,7 +732,9 @@ int main(int, char**)
                                                 }
                                             }
                                             size_t subEquationLength=subEquation.length();
-                                            mainLoop(options, true, true, subEquation, nothing,conditionValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                            lessetB::Options ifOptions=options;
+                                            ifOptions.showFractions=false;
+                                            mainLoop(ifOptions, true, true, subEquation, nothing,conditionValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
 
                                             if(conditionValue.substr(subEquationLength+3).find("true")!=std::string::npos) conditionTrue=true;
 
@@ -768,7 +774,9 @@ int main(int, char**)
                                             // I am gonna be honest, this code sucks. The .substr() is merely there to work around Lesset returning more than just the result.
 
                                             size_t subEquationLength=subEquation.length();
-                                            mainLoop(options, true, true, subEquation, nothing,jumpValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false); // Lines with # are comments
+                                            lessetB::Options jumpOptions=options;
+                                            jumpOptions.showFractions=false;
+                                            mainLoop(jumpOptions, true, true, subEquation, nothing,jumpValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false); // Lines with # are comments
                                             if(jumpValue.substr(subEquationLength+3).find("true")!=std::string::npos) jumpDestination=1;
                                             else if(jumpValue.substr(subEquationLength+3).find("false")!=std::string::npos) jumpDestination=0;
                                             else jumpDestination=round(std::stold(jumpValue.substr(subEquationLength+2)));
@@ -815,6 +823,22 @@ int main(int, char**)
                         ImGui::EndMenu();
                     }
 
+                    if(showSliderOption)
+                        if(ImGui::BeginMenu("Slider"))
+                        {
+                            ImGui::Text("Use in equations as \"slider\"");
+                            if(ImGui::SliderFloat("##",&sliderValue,0,10))
+                            {
+                                std::string combinedStatement{"letslider="+std::to_string(sliderValue)};
+                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                                recalculateGraphs=true;
+                            }
+                            ImGui::Checkbox("Animate",&animateSlider);
+                            ImGui::SetItemTooltip("This option will act like a CPU torture test.\nI am not responsible for your computer melting.");
+                            //instances.at(selectedInstance).userVariables.at(0).value=std::to_string(sliderValue);
+                            ImGui::EndMenu();
+                        }
+
                     if (ImGui::BeginMenu("Variables"))
                     {
                         if (ImGui::BeginMenu("New"))
@@ -835,13 +859,13 @@ int main(int, char**)
                         }
                         if (ImGui::BeginMenu("Show"))
                         {
-                            if(instances.at(selectedInstance).userVariables.size()==0)
+                            if(instances.at(selectedInstance).userVariables.size()==1)
                             {
                                 ImGui::MenuItem("You have no variables.",NULL,false,false);
                             }
                             else ImGui::MenuItem("Click a variable to delete it.",NULL,false,false);
                             std::string formatted;
-                            for(size_t i{}; i<instances.at(selectedInstance).userVariables.size(); i++)
+                            for(size_t i{1}; i<instances.at(selectedInstance).userVariables.size(); i++)
                             {
                                 formatted=instances.at(selectedInstance).userVariables.at(i).name+" = "+instances.at(selectedInstance).userVariables.at(i).value;
                                 if(ImGui::MenuItem(formatted.c_str()))
@@ -904,7 +928,7 @@ int main(int, char**)
                     {
                         if(ImGui::MenuItem("π")) equation.append("π");
                         ImGui::SetItemTooltip("3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068");
-
+                        
                         if(ImGui::MenuItem("ℯ")) equation.append("ℯ");
                         ImGui::SetItemTooltip("2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427");
                         
@@ -942,7 +966,7 @@ int main(int, char**)
                         ImGui::SetItemTooltip("0.01745329251994329576923690768488612713442871888541725456097191440171009114603449443682241569634509482\nDegrees to Radiants. Try entering with numbers into trig functions.");
 
                         if(ImGui::MenuItem("rad")) equation.append("rad");
-                        ImGui::SetItemTooltip("57.29577951308232087679815481410517033240547246656432154916024386120284714832155263244096899585111094"); 
+                        ImGui::SetItemTooltip("57.29577951308232087679815481410517033240547246656432154916024386120284714832155263244096899585111095");
                         
                         ImGui::EndMenu();
                     }
@@ -1124,6 +1148,7 @@ int main(int, char**)
 
                             default: {maxIndividualGraphPoints=MAXGRAPHPOINTSBASE/2; shownResolution="Low"; break;}
                         }
+                        ImGui::SetNextItemWidth(280.f);
                         if(ImGui::SliderInt("Resolution for graphing",&maxIndividualGraphPointsMultiplier,1,5,shownResolution.c_str()))
                         {
                             recalculateGraphs=true;
@@ -1135,7 +1160,7 @@ int main(int, char**)
                             recalculateGraphs=true;
                         }
                         ImGui::SetItemTooltip("This calculator is stupid and doesn't actually know where exactly a discontinuity in a function like 1/x is.\nThus, it tries to approximate it, but sometimes ends up creating visual artifacts in continuous functions like ∛x.");
-
+                        ImGui::SameLine();
                         ImGui::Checkbox("Mark special points",&markSpecialPoints);
                         ImGui::SetItemTooltip("Mark points where a function is zero, the point closest to the cursor, extremes.");
 
@@ -1146,19 +1171,20 @@ int main(int, char**)
 
                     if(ImGui::BeginMenu("Other"))
                     {
-                        ImGui::SliderInt("Matching digits for ≈ being true",&aroundTruthinessLeniency,0,10);
-                        ImGui::SetItemTooltip("When 2 values are close to equal, how many digits after the decimal point need to match for ≈ to be true?\nExample: 0≈0.1 = true when this setting is 0. However, 0≈0.11 = false.");
+                        ImGui::SetNextItemWidth(248.f);
+                        ImGui::SliderFloat("Max error for ≈",&aroundTruthinessLeniency,0,1);
+                        ImGui::SetItemTooltip("When 2 values are close to equal, what is the maximum difference for which ≈ returns true?");
                         if(aroundTruthinessLeniency<0) aroundTruthinessLeniency=0;
-                        if(aroundTruthinessLeniency>98) aroundTruthinessLeniency=98;
+                        if(aroundTruthinessLeniency>1) aroundTruthinessLeniency=1;
                         options.aroundTruthinessLeniency=aroundTruthinessLeniency;
 
                         ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
                         options.followImplicitMultiplicationPriorityConvention=followImplicitMultiplicationPriorityConvention;
                         ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
                         ImGui::SameLine();
-                        ImGui::Checkbox("Show fractions",&showFractions);
+                        ImGui::Checkbox("Pretty output",&showFractions);
                         options.showFractions=showFractions;
-                        ImGui::SetItemTooltip("Show some results as fractions instead of decimal numbers.");
+                        ImGui::SetItemTooltip("Show some results as fractions or constants instead of decimal numbers.");
                         ImGui::EndMenu();
                     }
                     
@@ -1244,26 +1270,26 @@ int main(int, char**)
                     {
                         if(ImGui::BeginMenu("Root"))
                         {
-                            if(ImGui::MenuItem("√")) ImGui::SetClipboardText("√");
+                            if(ImGui::MenuItem("√")) equation.append("√");
                             ImGui::SetItemTooltip("Square root (sqrt) function.");
 
-                            if(ImGui::MenuItem("∛")) ImGui::SetClipboardText("∛");
+                            if(ImGui::MenuItem("∛")) equation.append("∛");
                             ImGui::SetItemTooltip("Cube root (cbrt) function.");
 
-                            if(ImGui::MenuItem("∜")) ImGui::SetClipboardText("∜");
+                            if(ImGui::MenuItem("∜")) equation.append("∜");
                             ImGui::SetItemTooltip("Quartic root (qtrt) function.");
 
-                            if(ImGui::MenuItem("root(")) ImGui::SetClipboardText("root(");
+                            if(ImGui::MenuItem("root(")) equation.append("root(denominator,enumerator)");
                             ImGui::SetItemTooltip("Nth root function, denominator on the left, enumerator right.\nMay be called with one argument for sqrt.");
                             ImGui::EndMenu();
                         }
 
                         if(ImGui::BeginMenu("Logarithm"))
                         {                      
-                            if(ImGui::MenuItem("ln")) ImGui::SetClipboardText("ln");
+                            if(ImGui::MenuItem("ln")) equation.append("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
 
-                            if(ImGui::MenuItem("log(")) ImGui::SetClipboardText("log(");
+                            if(ImGui::MenuItem("log(")) equation.append("log(base,value)");
                             ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
                             
                             ImGui::EndMenu();
@@ -1271,40 +1297,40 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Trig"))
                         {
-                            if(ImGui::MenuItem("sin")) ImGui::SetClipboardText("sin");
+                            if(ImGui::MenuItem("sin")) equation.append("sin");
                             ImGui::SetItemTooltip("Sine function.");
 
-                            if(ImGui::MenuItem("cos")) ImGui::SetClipboardText("cos");
+                            if(ImGui::MenuItem("cos")) equation.append("cos");
                             ImGui::SetItemTooltip("Cosine function.");      
  
-                            if(ImGui::MenuItem("tan")) ImGui::SetClipboardText("tan");
+                            if(ImGui::MenuItem("tan")) equation.append("tan");
                             ImGui::SetItemTooltip("Tangent function.");           
                             
-                            if(ImGui::MenuItem("sec")) ImGui::SetClipboardText("sec");
+                            if(ImGui::MenuItem("sec")) equation.append("sec");
                             ImGui::SetItemTooltip("Secant function.");         
 
-                            if(ImGui::MenuItem("csc")) ImGui::SetClipboardText("csc");
+                            if(ImGui::MenuItem("csc")) equation.append("csc");
                             ImGui::SetItemTooltip("Cosecant function.");   
 
-                            if(ImGui::MenuItem("cot")) ImGui::SetClipboardText("cot");
+                            if(ImGui::MenuItem("cot")) equation.append("cot");
                             ImGui::SetItemTooltip("Cotangent function.");   
 
-                            if(ImGui::MenuItem("asin")) ImGui::SetClipboardText("asin");
+                            if(ImGui::MenuItem("asin")) equation.append("asin");
                             ImGui::SetItemTooltip("Arcsine function.");
 
-                            if(ImGui::MenuItem("acos")) ImGui::SetClipboardText("acos");
+                            if(ImGui::MenuItem("acos")) equation.append("acos");
                             ImGui::SetItemTooltip("Arccosine function.");      
  
-                            if(ImGui::MenuItem("atan")) ImGui::SetClipboardText("atan");
+                            if(ImGui::MenuItem("atan")) equation.append("atan");
                             ImGui::SetItemTooltip("Arctangent function.");           
                             
-                            if(ImGui::MenuItem("asec")) ImGui::SetClipboardText("asec");
+                            if(ImGui::MenuItem("asec")) equation.append("asec");
                             ImGui::SetItemTooltip("Arcsecant function.");         
 
-                            if(ImGui::MenuItem("acsc")) ImGui::SetClipboardText("acsc");
+                            if(ImGui::MenuItem("acsc")) equation.append("acsc");
                             ImGui::SetItemTooltip("Arccosecant function.");   
 
-                            if(ImGui::MenuItem("acot")) ImGui::SetClipboardText("acot");
+                            if(ImGui::MenuItem("acot")) equation.append("acot");
                             ImGui::SetItemTooltip("Arccotangent function.");  
                             
                             ImGui::EndMenu();
@@ -1312,40 +1338,40 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Hyperbolic"))
                         {
-                            if(ImGui::MenuItem("sinh")) ImGui::SetClipboardText("sinh");
+                            if(ImGui::MenuItem("sinh")) equation.append("sinh");
                             ImGui::SetItemTooltip("Hyperbolic sine function.");
 
-                            if(ImGui::MenuItem("cosh")) ImGui::SetClipboardText("cosh");
+                            if(ImGui::MenuItem("cosh")) equation.append("cosh");
                             ImGui::SetItemTooltip("Hyperbolic cosine function.");      
  
-                            if(ImGui::MenuItem("tanh")) ImGui::SetClipboardText("tanh");
+                            if(ImGui::MenuItem("tanh")) equation.append("tanh");
                             ImGui::SetItemTooltip("Hyperbolic tangent function.");           
                             
-                            if(ImGui::MenuItem("sech")) ImGui::SetClipboardText("sech");
+                            if(ImGui::MenuItem("sech")) equation.append("sech");
                             ImGui::SetItemTooltip("Hyperbolic secant function.");         
 
-                            if(ImGui::MenuItem("csch")) ImGui::SetClipboardText("csch");
+                            if(ImGui::MenuItem("csch")) equation.append("csch");
                             ImGui::SetItemTooltip("Hyperbolic cosecant function.");   
 
-                            if(ImGui::MenuItem("coth")) ImGui::SetClipboardText("coth");
+                            if(ImGui::MenuItem("coth")) equation.append("coth");
                             ImGui::SetItemTooltip("Hyperbolic cotangent function.");   
 
-                            if(ImGui::MenuItem("asinh")) ImGui::SetClipboardText("asinh");
+                            if(ImGui::MenuItem("asinh")) equation.append("asinh");
                             ImGui::SetItemTooltip("Hyperbolic arcsine function.");
 
-                            if(ImGui::MenuItem("acosh")) ImGui::SetClipboardText("acosh");
+                            if(ImGui::MenuItem("acosh")) equation.append("acosh");
                             ImGui::SetItemTooltip("Hyperbolic arccosine function.");      
  
-                            if(ImGui::MenuItem("atanh")) ImGui::SetClipboardText("atanh");
+                            if(ImGui::MenuItem("atanh")) equation.append("atanh");
                             ImGui::SetItemTooltip("Hyperbolic arctangent function.");           
                             
-                            if(ImGui::MenuItem("asech")) ImGui::SetClipboardText("asech");
+                            if(ImGui::MenuItem("asech")) equation.append("asech");
                             ImGui::SetItemTooltip("Hyperbolic arcsecant function.");         
 
-                            if(ImGui::MenuItem("acsch")) ImGui::SetClipboardText("acsch");
+                            if(ImGui::MenuItem("acsch")) equation.append("acsch");
                             ImGui::SetItemTooltip("Hyperbolic arccosecant function.");   
 
-                            if(ImGui::MenuItem("acoth")) ImGui::SetClipboardText("acoth");
+                            if(ImGui::MenuItem("acoth")) equation.append("acoth");
                             ImGui::SetItemTooltip("Hyperbolic arccotangent function.");  
                             
                             ImGui::EndMenu();
@@ -1353,22 +1379,22 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Number Manip."))
                         {
-                            if(ImGui::MenuItem("round")) ImGui::SetClipboardText("round");
+                            if(ImGui::MenuItem("round")) equation.append("round");
                             ImGui::SetItemTooltip("Rounds number to nearest integer.");
 
-                            if(ImGui::MenuItem("floor")) ImGui::SetClipboardText("floor");
+                            if(ImGui::MenuItem("floor")) equation.append("floor");
                             ImGui::SetItemTooltip("Floors number to its integer part. π => 3");
 
-                            if(ImGui::MenuItem("ceil")) ImGui::SetClipboardText("ceil");
+                            if(ImGui::MenuItem("ceil")) equation.append("ceil");
                             ImGui::SetItemTooltip("Raises number to next integer. π => 4");
 
-                            if(ImGui::MenuItem("abs")) ImGui::SetClipboardText("abs");
+                            if(ImGui::MenuItem("abs")) equation.append("abs");
                             ImGui::SetItemTooltip("Absolute value as a function.");
 
-                            if(ImGui::MenuItem("sabs(")) ImGui::SetClipboardText("sabs(");
+                            if(ImGui::MenuItem("sabs(")) equation.append("sabs(x,λ)");
                             ImGui::SetItemTooltip("Absolute value, but smooth.\nArgument 1 is f(x), argument 2 λ (blending)");
 
-                            if(ImGui::MenuItem("sign")) ImGui::SetClipboardText("sign");
+                            if(ImGui::MenuItem("sign")) equation.append("sign");
                             ImGui::SetItemTooltip("Returns sign of input. N<0 => -1, 0 => 0, N>0 => 1");
 
                             ImGui::EndMenu();
@@ -1376,25 +1402,25 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Statistics"))
                         {
-                            if(ImGui::MenuItem("mean(")) ImGui::SetClipboardText("mean(");
+                            if(ImGui::MenuItem("mean(")) equation.append("mean(");
                             ImGui::SetItemTooltip("Averages inputs, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("median(")) ImGui::SetClipboardText("median(");
+                            if(ImGui::MenuItem("median(")) equation.append("median(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns median, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("stdevp(")) ImGui::SetClipboardText("stdevp(");
+                            if(ImGui::MenuItem("stdevp(")) equation.append("stdevp(");
                             ImGui::SetItemTooltip("Population standard deviation, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("gcf(")) ImGui::SetClipboardText("gcf(");
-                            ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.");
+                            if(ImGui::MenuItem("gcf(")) equation.append("gcf(round )");
+                            ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nTry using round.");
 
-                            if(ImGui::MenuItem("lcm(")) ImGui::SetClipboardText("lcm(");
-                            ImGui::SetItemTooltip("Calculates the lowest common multiple, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.");
+                            if(ImGui::MenuItem("lcm(")) equation.append("lcm(round ");
+                            ImGui::SetItemTooltip("Calculates the lowest common multiple, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nTry using round.");
 
-                            if(ImGui::MenuItem("min(")) ImGui::SetClipboardText("min(");
+                            if(ImGui::MenuItem("min(")) equation.append("min(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns lowest, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("max(")) ImGui::SetClipboardText("max(");
+                            if(ImGui::MenuItem("max(")) equation.append("max(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns greatest, takes multiple arguments.");
 
                             ImGui::EndMenu();
@@ -1402,43 +1428,43 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Fun and Misc."))
                         {
-                            if(ImGui::MenuItem("if(")) ImGui::SetClipboardText("if(");
+                            if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
                             ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
 
-                            if(ImGui::MenuItem("rndint(")) ImGui::SetClipboardText("rndint(");
+                            if(ImGui::MenuItem("rndint(")) equation.append("rndint(min, max)");
                             ImGui::SetItemTooltip("Takes a lower bound and upper bound, returns a random integer in range.");
 
-                            if(ImGui::MenuItem("rndsel(")) ImGui::SetClipboardText("rndsel(");
+                            if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("derive(")) ImGui::SetClipboardText("derive(");
+                            if(ImGui::MenuItem("derive(")) equation.append("derive(");
                             ImGui::SetItemTooltip("Approximates a derivative. Takes one argument.");
 
-                            if(ImGui::MenuItem("smax(")) ImGui::SetClipboardText("smax(");
+                            if(ImGui::MenuItem("smax(")) equation.append("smax(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Maximum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
 
-                            if(ImGui::MenuItem("smin(")) ImGui::SetClipboardText("smin(");
+                            if(ImGui::MenuItem("smin(")) equation.append("smin(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Minimum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
 
-                            if(ImGui::MenuItem("sat")) ImGui::SetClipboardText("sat");
+                            if(ImGui::MenuItem("sat")) equation.append("sat");
                             ImGui::SetItemTooltip("Linear transition between 0 and 1.");
                             
-                            if(ImGui::MenuItem("sstep")) ImGui::SetClipboardText("sstep");
+                            if(ImGui::MenuItem("sstep")) equation.append("sstep");
                             ImGui::SetItemTooltip("Smooth transition between 0 and 1.");
 
-                            if(ImGui::MenuItem("sinc")) ImGui::SetClipboardText("sinc");
+                            if(ImGui::MenuItem("sinc")) equation.append("sinc");
                             ImGui::SetItemTooltip("sinc(x) = sin(x)/x /; x ≠ 0, sinc(0) = 1.");
 
-                            if(ImGui::MenuItem("exp")) ImGui::SetClipboardText("exp");
+                            if(ImGui::MenuItem("exp")) equation.append("exp");
                             ImGui::SetItemTooltip("exp(x) = e^x");
 
-                            if(ImGui::MenuItem("mix(")) ImGui::SetClipboardText("mix(");
+                            if(ImGui::MenuItem("mix(")) equation.append("mix(min, max, f(x)");
                             ImGui::SetItemTooltip("Mixes args 1, 2, by a function between 0 and 1.");
 
-                            if(ImGui::MenuItem("ReLU")) ImGui::SetClipboardText("ReLU");
+                            if(ImGui::MenuItem("ReLU")) equation.append("ReLU");
                             ImGui::SetItemTooltip("if(f(x)>0), ReLU(f(x))=f(x), else ReLU(x)=0)");
 
-                            if(ImGui::MenuItem("fish")) ImGui::SetClipboardText("fish.");
+                            if(ImGui::MenuItem("fish")) equation.append("fish.");
                             ImGui::SetItemTooltip("fishifies your equation.");
 
                             ImGui::EndMenu();
@@ -1450,34 +1476,34 @@ int main(int, char**)
                     {
                         ImGui::MenuItem("false = 0, true = 1, if N≠0 => true",NULL,false,false);
 
-                        if(ImGui::MenuItem("<")) ImGui::SetClipboardText("<");
+                        if(ImGui::MenuItem("<")) equation.append("<");
                         ImGui::SetItemTooltip("Returns true if left less then right.");
                        
-                        if(ImGui::MenuItem(">")) ImGui::SetClipboardText(">");
+                        if(ImGui::MenuItem(">")) equation.append(">");
                         ImGui::SetItemTooltip("Returns true if left greater then right."); 
 
-                        if(ImGui::MenuItem("≤")) ImGui::SetClipboardText("≤");
+                        if(ImGui::MenuItem("≤")) equation.append("≤");
                         ImGui::SetItemTooltip("Returns true if left less than or equal to right. (<=)");
                         
-                        if(ImGui::MenuItem("≥")) ImGui::SetClipboardText("≥");
+                        if(ImGui::MenuItem("≥")) equation.append("≥");
                         ImGui::SetItemTooltip("Returns true if left greater than or equal to right. (>=)");
 
-                        if(ImGui::MenuItem("=")) ImGui::SetClipboardText("=");
+                        if(ImGui::MenuItem("=")) equation.append("=");
                         ImGui::SetItemTooltip("Returns true if left is exactly equal to right.");
 
-                        if(ImGui::MenuItem("≠")) ImGui::SetClipboardText("≠");
+                        if(ImGui::MenuItem("≠")) equation.append("≠");
                         ImGui::SetItemTooltip("Returns true if left not equal to right. (=!)");
 
-                        if(ImGui::MenuItem("≈")) ImGui::SetClipboardText("≈");
+                        if(ImGui::MenuItem("≈")) equation.append("≈");
                         ImGui::SetItemTooltip("Returns true if left close to equal to right. (AROUND)\nCan be configured in options.\nUseful in graphing intersections, zero points, so on.");
 
-                        if(ImGui::MenuItem("∨")) ImGui::SetClipboardText("∨");
+                        if(ImGui::MenuItem("∨")) equation.append("∨");
                         ImGui::SetItemTooltip("Logical or, returns true if either side is true. (OR)");
 
-                        if(ImGui::MenuItem("∧")) ImGui::SetClipboardText("∧");
+                        if(ImGui::MenuItem("∧")) equation.append("∧");
                         ImGui::SetItemTooltip("Logical and, returns true if both sides are true. (AND)");
 
-                        if(ImGui::MenuItem("⊕")) ImGui::SetClipboardText("⊕");
+                        if(ImGui::MenuItem("⊕")) equation.append("⊕");
                         ImGui::SetItemTooltip("Logical exclusive or, returns true if either side is true. (XOR)");
 
                         ImGui::EndMenu();
@@ -1556,7 +1582,16 @@ int main(int, char**)
                 }
                 else ImGui::Text("You are using the main instance.");
             }
-            
+            if(animateSlider)
+            {
+                sliderValue+=0.01;
+                if(sliderValue>10) sliderValue=0;
+                if(sliderValue<0) sliderValue=0;
+                std::string combinedStatement{"letslider="+std::to_string(sliderValue)};
+                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                recalculateGraphs=true;
+                updatePreviewGraph=true;
+            }
             ImGui::SetNextItemWidth(io.DisplaySize.x/3);
             ImGui::InputText(" ",&equation);          // Call Lesset
             if(equation!="") nonEmptyEquation=equation;
@@ -1564,12 +1599,20 @@ int main(int, char**)
             std::string resultPlusEquals;
             if(equation!="") lastNonEmptyEquation=equation;
             else resultPlusEquals="";
-            ImGui::SameLine(io.DisplaySize.x/3+10);
-            resultPlusEquals="  =  " + result;
+            ImGui::SameLine(io.DisplaySize.x/3+11);
+
+            if(result.find('\n')==std::string::npos) resultPlusEquals="  =  " + result;
+            else resultPlusEquals="  =  ";
 
             if(equation=="fps")
             {
                 resultPlusEquals = "  =  " + std::to_string(static_cast<int>(1.0/io.DeltaTime));
+            }
+
+            if(equation=="showSliderOption")
+            {
+                showSliderOption=true;
+                resultPlusEquals = "  =  cheets on.";
             }
 
             if(ImGui::Button(resultPlusEquals.c_str()))
@@ -1582,7 +1625,29 @@ int main(int, char**)
                 }
                 
             }
+            if(result.find('\n')!=std::string::npos)
+            {
+                ImGui::SameLine();
+                if(ImGui::BeginMenu("Result"))
+                {
 
+                    std::string line;
+                    // ImGui::Text("%s",resultHistory.c_str());
+                    
+                    for(size_t i{}; i<result.length();)
+                    {
+                        line=result.substr(i,result.find('\n',i)-i);
+                        if(ImGui::Button(line.c_str()))
+                        {
+                            ImGui::SetClipboardText(line.c_str());
+                        }
+                        ImGui::SetItemTooltip("Click to copy.");
+                        i+=line.length()+1;
+                    }
+                    ImGui::EndMenu();
+
+                }
+            }
             if(graphsEquations.size()<MANYGRAPHS && instances.size()==1) ImGui::Text("");
 
 

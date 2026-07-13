@@ -8,6 +8,8 @@ Also, it has a small scripting language. And like, 64 functions. And variables. 
 
 To compile:
 
+- Install Vulkan headers
+
 - Install the Boost C++ library https://www.boost.org/
 
 - Get a copy of NotoSansMathRegular

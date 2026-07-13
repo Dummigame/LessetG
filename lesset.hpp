@@ -116,10 +116,10 @@ struct Options
     cpp_dec_float_100 xMin{};
     cpp_dec_float_100 xMax{};  
     cpp_dec_float_100 xStep{}; // Hey, reference
-    size_t aroundTruthinessLeniency{2};
+    cpp_dec_float_100 aroundTruthinessLeniency{0.01};
     bool interpolateDiscontinuities{};
     bool followImplicitMultiplicationPriorityConvention{true};
-    bool showFractions{};
+    bool showFractions{true};
     std::string ans;
 };
 
@@ -382,8 +382,8 @@ namespace globals
     const std::unordered_map<std::string, std::string> constants
     {
         {"e" , "2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427"},
-        {"pi" , "3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679"},
-        {"tau" , "6.2831853071795864769252867665590057683943387987502116419498891846156328125724179972560696506842341358"},
+        {"pi" , "3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068"},
+        {"tau" , "6.283185307179586476925286766559005768394338798750211641949889184615632812572417997256069650684234136"},
         {"phi" , "1.618033988749894848204586834365638117720309179805762862135448622705260462818902449707207204189391137"},
         {"eul" , "0.5772156649015328606065120900824024310421593359399235988057672348848677267776646709369470632917467495"},
         {"rad" , "57.29577951308232087679815481410517033240547246656432154916024386120284714832155263244096899585111094"},
@@ -415,6 +415,36 @@ namespace globals
         {"rnd", "rnd"}, // These are replaced later
         {"rndint","rndint"},
     };
+
+    const std::unordered_map<std::string, std::string> valueToConstants
+    {
+        { "2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427","ℯ"},
+        { "3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068","π"},
+        {"6.283185307179586476925286766559005768394338798750211641949889184615632812572417997256069650684234136","τ"},
+        { "1.618033988749894848204586834365638117720309179805762862135448622705260462818902449707207204189391137","φ"},
+        { "0.5772156649015328606065120900824024310421593359399235988057672348848677267776646709369470632917467495","γ"},
+        { "57.29577951308232087679815481410517033240547246656432154916024386120284714832155263244096899585111094","rad"},
+        {"0.01745329251994329576923690768488612713442871888541725456097191440171009114603449443682241569634509482","dgr" },
+        { "299792458","c"},
+        { "6.6743e-11","G"},
+        { "9.80665","g"},
+        {"5.670374419e-08","o" },
+        {"1.380649e-23","k" },
+        {"0.0072973525693","a" },
+        {"6.62607015e-34","h" },
+        {"inf","∞" },
+        {"-inf","-∞" },
+        {"2.2e-18","H0" },
+        {"5.9722e+24","me" },
+        {"1.602176634e-19","ec" },
+        {"376.730313668","Z0" },
+        {"1.25663706212e-06","U0" },
+        {"8.8541878128e-12","E0" },
+        {"1.6605390666e-27","ma" },
+        {"8.31446261815","R" },
+        {"6.02214076e+23","Na" },
+    };
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -520,7 +550,7 @@ class Token
             if(input==globals::userVariables.at(i).name) return globals::userVariables.at(i).value;
         }
 
-
+        return "0";
         std::unreachable();
     }
     ///////////////////////////////////////////////
@@ -964,18 +994,38 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 }
             }    
         }
-        if(!hasX && options.showFractions && isNumber(resultAsOSStream.str()))
+        bool isKnownConstant{};
+        if(!hasX && options.showFractions && globals::valueToConstants.find(resultAsOSStream.str())!=globals::valueToConstants.end())
+        {
+            if(equation!=globals::valueToConstants.find(resultAsOSStream.str())->second)
+            {
+                if(!passedCalculationsFile) result=globals::valueToConstants.find(resultAsOSStream.str())->second;
+                else
+                {
+                    result+=equation+" = "+globals::valueToConstants.find(resultAsOSStream.str())->second+'\n';
+                }
+                isKnownConstant=true;
+            }
+
+        }
+
+        if(!hasX && options.showFractions && isNumber(resultAsOSStream.str()) && !isKnownConstant && resultAsOSStream.str().find('e')==std::string::npos)
         {
             Point frac = decimalToFraction(std::stod(resultAsOSStream.str()));
             resultAsOSStream.str("");
             resultAsOSStream<<frac.x<<'/'<<frac.y;
 
-            if(abs(frac.x)!=INFINITY && frac.y!=1 && resultAsOSStream.str().length()<12 && equation!=resultAsOSStream.str()) result=resultAsOSStream.str();
+            if(abs(frac.x)!=INFINITY && frac.y!=1 && resultAsOSStream.str().length()<12 && equation!=resultAsOSStream.str())
+            {
+                if(!passedCalculationsFile) result=resultAsOSStream.str();
+                else result+=equation+" = "+resultAsOSStream.str()+'\n';
+            }
         }
+
 
         if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile))
         {
-            std::string addToHistory = '\n'+equation+" = "+globals::previousResult;
+            std::string addToHistory = '\n'+equation+" = "+result;
             if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
         }
         cleanup:
@@ -985,7 +1035,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
         tokens.clear();
         options.graph=false;
         firstPass=false;
-        globals::tokenMemory.clear();
+        // globals::tokenMemory.clear();
         getTokens("",true);
 
         userAliases=globals::userAliases;
@@ -1285,7 +1335,7 @@ T calculation(std::vector<Token> tokens, const T xValue)
     std::ostringstream resultAsOSStream;
     if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
     else resultAsOSStream.precision(15);
-
+        
     // Remove some stray operators
     if(tokens.at(0).typeCategory()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
 
@@ -1295,7 +1345,7 @@ T calculation(std::vector<Token> tokens, const T xValue)
     {
         // Case example: 4!!3 -> 4!! h* 3
         if(tokens.at(i).typeCategory()==tokenCategory_t::NUMBER && 
-          (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-" || tokens.at(i-1).value()=="!!"))
+        (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-" || tokens.at(i-1).value()=="!!"))
                 tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3x -> 3 h* x
@@ -1304,11 +1354,11 @@ T calculation(std::vector<Token> tokens, const T xValue)
 
         // Case example: x3 -> x h* 3
         if(tokens.at(i).typeCategory()==tokenCategory_t::NUMBER &&
-           (tokens.at(i-1).type()==token_t::VARIABLE || tokens.at(i-1).type()==token_t::CONSTANT)) tokens.emplace(tokens.begin()+i++, Token("h*"));
+        (tokens.at(i-1).type()==token_t::VARIABLE || tokens.at(i-1).type()==token_t::CONSTANT)) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3sin x -> 3 h* sinx
         if(tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION &&
-           tokens.at(i-1).typeCategory()==tokenCategory_t::NUMBER) tokens.emplace(tokens.begin()+i++, Token("h*"));
+        tokens.at(i-1).typeCategory()==tokenCategory_t::NUMBER) tokens.emplace(tokens.begin()+i++, Token("h*"));
         
         // Case example: 3(expr) -> 3 h* (expr)
         if((tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR || tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION) &&
@@ -1317,22 +1367,44 @@ T calculation(std::vector<Token> tokens, const T xValue)
 
         // Case example: (expr)3 -> (expr) h* 3 
         if(tokens.at(i-1).typeCategory()==tokenCategory_t::SUBEXPR && 
-           tokens.at(i).typeCategory()!=tokenCategory_t::OPERATOR &&
-           tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.emplace(tokens.begin()+i++, Token("h*"));
+        tokens.at(i).typeCategory()!=tokenCategory_t::OPERATOR &&
+        tokens.at(i).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3-3 -> 3+-3, (expr)-3 -> (expr)+-3
         // Reason: Binary minus is a lie lol
         if(tokens.at(i).value()=="-" &&
-          tokens.at(i-1).type()!=token_t::BINARYOP &&
-          tokens.at(i-1).type()!=token_t::UNARYOP &&
-          tokens.at(i-1).type()!=token_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("+"));
+        tokens.at(i-1).type()!=token_t::BINARYOP &&
+        tokens.at(i-1).type()!=token_t::UNARYOP &&
+        tokens.at(i-1).type()!=token_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("+"));
 
         // Delete unary plus since it does jack
         if(tokens.at(i).value()=="+" &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::NUMBER &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.erase(tokens.begin()+i--);
     }
+    
+    for(int i{1}; i<tokens.size(); i++)
+    {
+        if(tokens.at(i).type()==token_t::BINARYOP && tokens.at(i-1).type()==token_t::BINARYOP) // Example: 3**/3 -> 3**3
+        {
+            tokens.erase(tokens.begin()+i--);
+        }
+        if(i>0 && tokens.at(i).value()=="-" && tokens.at(i-1).value()=="-")
+        {
+            tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
+            i-=2;
+        }
+    }
+    for(int i{static_cast<int>(tokens.size())-1}; i>=0 ; i--)
+    {
+        if(tokens.at(i).value()=="-" ||
+        tokens.at(i).type()==token_t::BINARYOP ||
+        tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION) tokens.erase(tokens.begin()+i);
 
+        else break;
+    }
+
+    // Replace ans, rnd, rndint with numbers
     for(size_t i{}; i<tokens.size(); i++)
     {
         if(tokens.at(i).value()=="ans")
@@ -1353,27 +1425,8 @@ T calculation(std::vector<Token> tokens, const T xValue)
             resultAsOSStream.clear();
         }
     }
-    
-    for(int i{1}; i<tokens.size(); i++)
-    {
-        if(tokens.at(i).type()==token_t::BINARYOP && tokens.at(i-1).type()==token_t::BINARYOP) // Example: 3**/3 -> 3**3
-        {
-            tokens.erase(tokens.begin()+i--);
-        }
-        if(i>0 && tokens.at(i).value()=="-" && tokens.at(i-1).value()=="-")
-        {
-            tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
-            i-=2;
-        }
-    }
-    for(int i{static_cast<int>(tokens.size())-1}; i>=0 ; i--)
-    {
-        if(tokens.at(i).value()=="-" ||
-           tokens.at(i).type()==token_t::BINARYOP ||
-           tokens.at(i).typeCategory()==tokenCategory_t::FUNCTION) tokens.erase(tokens.begin()+i);
 
-        else break;
-    }
+
     if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
     if(tokens.size()==1 && tokens.at(0).type()==token_t::INVALID) return NAN;
     size_t pass{};
@@ -1720,6 +1773,10 @@ T evaluateLcm(Token &arg, const T xValue)
     T numRight{};
     std::string numberAsString;
     evaluateArgs(arg,xValue,intermediateResults);
+    if(globals::aroundLeniency.graph)
+    {
+        for(size_t i{}; i<intermediateResults.size(); i++) intermediateResults.at(i)=round(intermediateResults.at(i));
+    }
     for(size_t i{}; i<intermediateResults.size(); i++)
     {
         if(intermediateResults.at(i)<0) intermediateResults.at(i)=-intermediateResults.at(i);
@@ -1758,6 +1815,10 @@ T evaluateGcf(Token &arg, const T xValue)
     T tempValue{};
     std::string numberAsString;
     evaluateArgs(arg,xValue,intermediateResults);
+    if(globals::aroundLeniency.graph)
+    {
+        for(size_t i{}; i<intermediateResults.size(); i++) intermediateResults.at(i)=round(intermediateResults.at(i));
+    }
     for(size_t i{}; i<intermediateResults.size(); i++)
     {
         if(intermediateResults.at(i)<0) intermediateResults.at(i)=-intermediateResults.at(i);
@@ -1802,31 +1863,19 @@ void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults
 template <typename T = cpp_dec_float_100>
 T evaluateRndint(Token &arg, const T xValue)
 {
-    std::vector<long double> intermediateResults;
+    std::vector<T> intermediateResults;
     std::string currentToken;
     int nestingLevel{};
-    for(size_t i{}; i<arg.value().length() && nestingLevel>=0; i++)
-    {
-        if(arg.value().at(i)=='(') nestingLevel++;
-        else if(arg.value().at(i)==')') nestingLevel--;
-        if(nestingLevel<0) break;
-        if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
-        else
-        {
-            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue));
-            currentToken.clear();
-        }
-    }
-    if(currentToken!="") intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue));
+    evaluateArgs(arg, xValue, intermediateResults,2);
+    if(intermediateResults.size()==0) return 0;
+    if(intermediateResults.size()==1) return intermediateResults.at(0);
+    // std::cout<<"\nResults: "<<intermediateResults.at(0) << ',' << intermediateResults.at(1);
 
-    if(intermediateResults.size()!=2)
-    {
-        std::cerr<<"Did not supply 2 arguments for rndint()\n";
-        return NAN;
-    }
-    if(std::round(intermediateResults.at(0)) > std::round(intermediateResults.at(1))) std::swap(intermediateResults.at(0), intermediateResults.at(1));
+    if(intermediateResults.at(0)!=intermediateResults.at(0) || intermediateResults.at(1)!=intermediateResults.at(1)) return 0;
 
-    std::uniform_int_distribution<> intDist(static_cast<int>(std::round(intermediateResults.at(0))),static_cast<int>(std::round(intermediateResults.at(1))));
+    if(round(intermediateResults.at(0)) > round(intermediateResults.at(1))) std::swap(intermediateResults.at(0), intermediateResults.at(1));
+
+    std::uniform_int_distribution<> intDist(static_cast<int>(round(intermediateResults.at(0))),static_cast<int>(round(intermediateResults.at(1))));
     return intDist(randomMt);
 }
 
@@ -2048,7 +2097,7 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
     if(operation.value()=="AND") return numberLeft&&numberRight;
     if(operation.value()=="XOR") return (!numberLeft)!=(!numberRight);
     if(operation.value()=="NOR") return (numberLeft==0)&&(numberRight==0);
-    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=(1/pow(10,globals::aroundLeniency.aroundTruthinessLeniency+1));
+    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::aroundLeniency.aroundTruthinessLeniency;
     
 
     if(operation.value()=="+") return numberLeft+numberRight;
