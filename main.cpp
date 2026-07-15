@@ -56,7 +56,7 @@ struct Instance
 {
     std::string name;
     std::vector<lessetB::Variable> userVariables{lessetB::Variable("slider","0")};
-    std::vector<lessetB::Alias> userAliases;
+    std::vector<lessetB::Macro> userMacros;
     std::string lastScriptOutput;
 };
 
@@ -73,9 +73,9 @@ struct Instance
 
 
 bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &pointsY, size_t i, int maxIndividualGraphPointsMultiplier);
-bool addIdentifier(Instance &data,const lessetB::Alias &newAlias);
+bool addIdentifier(Instance &data,const lessetB::Macro &newMacro);
 bool addIdentifier(Instance &data,const lessetB::Variable &newVariable);
-bool replaceAliases(std::string &equation, Instance &instance);
+bool replaceMacros(std::string &equation, Instance &instance);
 
 
 
@@ -485,43 +485,67 @@ int main(int, char**)
     // Our state
     ImVec4 clear_color = ImVec4(0.f, 0.f, 0.f, 0.f);
 
+    ImPlotSpec specHidden;
+    specHidden.FillAlpha=0;
+    specHidden.LineColor=ImVec4(0,0,0,0);
+    specHidden.Flags=ImPlotColormapScaleFlags_NoLabel;
+    const float emptyX[]{-1,1};
+    const float emptyY[]{-1,1};
+
     float sliderValue{};
     bool animateSlider{};
-    bool showSliderOption{};
+    std::string sliderMin{'0'};
+    std::string sliderMax{"10"};
+    float sliderMinFloat{};
+    float sliderMaxFloat{10};
+
+    std::string xMin{'0'};
+    std::string xMax{'0'};
+    std::string xStep="0.1";
+
+    std::string aroundTruthinessLeniency="0.01";
+    float aroundTruthinessLeniencyFloat{0.01};
+
     std::string result;
+
     std::string newIdentifierNameVariable{};
     std::string newIdentifierValueVariable{};
-    std::string newIdentifierNameAlias{};
-    std::string newIdentifierValueAlias{};
+    std::string assignVariableReport;
+    std::string newIdentifierNameMacro{};
+    std::string newIdentifierValueMacro{};
+    std::string assignMacroReport;
+
     std::string nothing;
+
     std::string lastNonEmptyEquation;
     std::vector<std::string> graphsEquations{};
     std::string graphEquation{};
     std::string nonEmptyGraphEquation{};
     std::string equation{};
     std::string nonEmptyEquation{};
+
     float pastPrecisionDivisors[100]{};
     bool graph{};
-    
+    bool showSliderOption{};
     bool previewGraph{};
     bool updatePreviewGraph{};
     bool markSpecialPoints{true};
     size_t timeStationary{};
     ImPlotRect limits{};
-    size_t functionCount{};
+    
     size_t selectedInstance{};
     std::string newInstanceName;
     std::string filePath;
     std::string resultHistory;
-    std::string assignVariableReport;
-    std::string assignAliasReport;
+
     bool showFps{};
     std::pair<std::vector<double>,std::vector<double>> liveGraphPoints;
 
     bool drawManyGraphs{true};
 
     int maxIndividualGraphPoints {8000}; // Maximum number of points per graph calculated for one screen. (There may be more because of memoization when zooming out)
-
+    int maxIndividualGraphPointsMultiplier{2};
+    
     bool hasRunScriptInMain{};
 
     std::vector<Instance> instances{};
@@ -533,13 +557,12 @@ int main(int, char**)
     float xMinFloat{};
     float xMaxFloat{};
     float xStepFloat{0.1};
-    float aroundTruthinessLeniency{0.01};
+
     bool followImplicitMultiplicationPriorityConvention{true};
     bool showFractions{true};
 
     bool interpolateDiscontinuities{};
     bool recalculateGraphs{};
-    int maxIndividualGraphPointsMultiplier{2};
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -734,7 +757,7 @@ int main(int, char**)
                                             size_t subEquationLength=subEquation.length();
                                             lessetB::Options ifOptions=options;
                                             ifOptions.showFractions=false;
-                                            mainLoop(ifOptions, true, true, subEquation, nothing,conditionValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                            mainLoop(ifOptions, true, true, subEquation, nothing,conditionValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                             if(conditionValue.substr(subEquationLength+3).find("true")!=std::string::npos) conditionTrue=true;
 
@@ -776,7 +799,7 @@ int main(int, char**)
                                             size_t subEquationLength=subEquation.length();
                                             lessetB::Options jumpOptions=options;
                                             jumpOptions.showFractions=false;
-                                            mainLoop(jumpOptions, true, true, subEquation, nothing,jumpValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false); // Lines with # are comments
+                                            mainLoop(jumpOptions, true, true, subEquation, nothing,jumpValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false); // Lines with # are comments
                                             if(jumpValue.substr(subEquationLength+3).find("true")!=std::string::npos) jumpDestination=1;
                                             else if(jumpValue.substr(subEquationLength+3).find("false")!=std::string::npos) jumpDestination=0;
                                             else jumpDestination=round(std::stold(jumpValue.substr(subEquationLength+2)));
@@ -803,7 +826,7 @@ int main(int, char**)
                                         {
                                             scriptEquation.at(0)='#';
                                         }
-                                        mainLoop(options, true, true, scriptEquation, nothing,instances.at(selectedInstance).lastScriptOutput,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true); // Lines with # are comments
+                                        mainLoop(options, true, true, scriptEquation, nothing,instances.at(selectedInstance).lastScriptOutput,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true); // Lines with # are comments
                                     }
                                     if(calculationsFile.peek()=='\n') for(; calculationsFile.peek()=='\n'; calculationsFile.seekg(static_cast<size_t>(calculationsFile.tellg())+1));
                                 }
@@ -827,11 +850,28 @@ int main(int, char**)
                         if(ImGui::BeginMenu("Slider"))
                         {
                             ImGui::Text("Use in equations as \"slider\"");
-                            if(ImGui::SliderFloat("##",&sliderValue,0,10))
+                            if(ImGui::SliderFloat("##",&sliderValue,sliderMinFloat,sliderMaxFloat))
                             {
                                 std::string combinedStatement{"letslider="+std::to_string(sliderValue)};
-                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                                 recalculateGraphs=true;
+                            }
+                            ImGui::SetNextItemWidth(100);
+                            if(ImGui::InputText("Min", &sliderMin,ImGuiInputTextFlags_CharsScientific))
+                            {
+                                lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                                std::string tmp=sliderMin;
+                                lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMin,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                                if(sliderMin!="" && lessetB::isNumber(sliderMin))sliderMinFloat=std::stof(sliderMin);
+                            }
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(100);
+                            if(ImGui::InputText("Max", &sliderMax))
+                            {
+                                lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                                std::string tmp=sliderMax;
+                                lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMax,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                                if(sliderMax!="" && lessetB::isNumber(sliderMax))sliderMaxFloat=std::stof(sliderMax);
                             }
                             ImGui::Checkbox("Animate",&animateSlider);
                             ImGui::SetItemTooltip("This option will act like a CPU torture test.\nI am not responsible for your computer melting.");
@@ -848,7 +888,7 @@ int main(int, char**)
                             if (ImGui::Button("Assign"))
                             {
                                 std::string combinedStatement{"let"+newIdentifierNameVariable+"="+newIdentifierValueVariable};
-                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignVariableReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignVariableReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                             }
                             if(assignVariableReport.find('\n',assignVariableReport.find('\n')+1)!=std::string::npos)
                             {
@@ -883,34 +923,34 @@ int main(int, char**)
                     {
                         if (ImGui::BeginMenu("New"))
                         {
-                            ImGui::InputText("Name",&newIdentifierNameAlias);
-                            ImGui::InputText("Value",&newIdentifierValueAlias);
+                            ImGui::InputText("Name",&newIdentifierNameMacro);
+                            ImGui::InputText("Value",&newIdentifierValueMacro);
                             if (ImGui::Button("Assign"))
                             {
-                                std::string combinedStatement{"set"+newIdentifierNameAlias+"="+newIdentifierValueAlias};
-                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignAliasReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                                std::string combinedStatement{"set"+newIdentifierNameMacro+"="+newIdentifierValueMacro};
+                                lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignMacroReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                             }
-                            if(assignAliasReport.find('\n',assignAliasReport.find('\n')+1)!=std::string::npos)
+                            if(assignMacroReport.find('\n',assignMacroReport.find('\n')+1)!=std::string::npos)
                             {
-                                assignAliasReport.erase(0,assignAliasReport.find('\n',0)+1);
+                                assignMacroReport.erase(0,assignMacroReport.find('\n',0)+1);
                             }
-                            if(assignAliasReport!="") ImGui::Text("%s", assignAliasReport.c_str());
+                            if(assignMacroReport!="") ImGui::Text("%s", assignMacroReport.c_str());
                             ImGui::EndMenu();
                         }
                         if (ImGui::BeginMenu("Show"))
                         {
-                            if(instances.at(selectedInstance).userAliases.size()==0)
+                            if(instances.at(selectedInstance).userMacros.size()==0)
                             {
                                 ImGui::MenuItem("You have no macros.",NULL,false,false);
                             }
                             else ImGui::MenuItem("Click a macro to delete it.",NULL,false,false);
                             std::string formatted;
-                            for(size_t i{}; i<instances.at(selectedInstance).userAliases.size(); i++)
+                            for(size_t i{}; i<instances.at(selectedInstance).userMacros.size(); i++)
                             {
-                                formatted=instances.at(selectedInstance).userAliases.at(i).name+" = "+instances.at(selectedInstance).userAliases.at(i).value;
+                                formatted=instances.at(selectedInstance).userMacros.at(i).name+" = "+instances.at(selectedInstance).userMacros.at(i).value;
                                 if(ImGui::MenuItem(formatted.c_str()))
                                 {
-                                    instances.at(selectedInstance).userAliases.erase(instances.at(selectedInstance).userAliases.begin()+i);
+                                    instances.at(selectedInstance).userMacros.erase(instances.at(selectedInstance).userMacros.begin()+i);
                                 }
                             }
                             ImGui::EndMenu();
@@ -1035,7 +1075,7 @@ int main(int, char**)
 
                 if (ImGui::BeginMenu("Graph"))
                 {
-                    if(ImGui::BeginMenu("Add functions"))
+                    if(ImGui::BeginMenu("Add"))
                     {
                         std::string graphEquationPlusYEquals = "y = " + graphEquation;
                         ImGui::PushItemWidth(550);
@@ -1081,7 +1121,7 @@ int main(int, char**)
 
                     if(graphsEquations.size()!=0)
                     {
-                        if(ImGui::BeginMenu("Remove functions"))
+                        if(ImGui::BeginMenu("Remove"))
                         {
                             ImGui::MenuItem("Click a function to remove it.",NULL,false,false);
                             if(graphsEquations.size()>4) if(ImGui::Button("Remove All"))
@@ -1117,17 +1157,54 @@ int main(int, char**)
                 if(ImGui::BeginMenu("Options"))
                 {
 
-                    if(ImGui::BeginMenu("Calculations with x"))
+                    if(ImGui::BeginMenu("Settings for x"))
                     {
-                        ImGui::SliderFloat("Minimum x",&xMinFloat,-100,100);
-                        options.xMin=xMinFloat;
 
-                        ImGui::SliderFloat("Maximum x",&xMaxFloat,-100,100);
-                        options.xMax=xMaxFloat;
+                        if(ImGui::InputText("Min", &xMin,ImGuiInputTextFlags_CharsScientific))
+                        {
+                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            std::string tmp=xMin;
+                            lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xMin,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                        }
 
-                        ImGui::SliderFloat("Increment x by",&xStepFloat,0.01,100);
-                        if(xStepFloat<0.01f) xStepFloat=0.01f;
-                        options.xStep=xStepFloat;
+                        if(lessetB::isNumber(xMin) && lessetB::isNumber(xMax) && xMin!="" && xMax!="")
+                        {
+                            if(std::stold(xMax)<std::stold(xMin)) ImGui::SetItemTooltip("Max is currently less than Min.");
+                        }
+
+                        if(lessetB::isNumber(xMin) && xMin!="" && xMin!="-")
+                        {
+                            options.xMin=std::stold(xMin);
+                        }
+
+                        if(ImGui::InputText("Max", &xMax,ImGuiInputTextFlags_CharsScientific))
+                        {
+                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            std::string tmp=xMax;
+                            lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xMax,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                        }
+
+                        if(lessetB::isNumber(xMin) && lessetB::isNumber(xMax) && xMin!="" && xMax!="")
+                        {
+                            if(std::stold(xMax)<std::stold(xMin)) ImGui::SetItemTooltip("Max is currently less than Min.");
+                        }
+
+                        if(lessetB::isNumber(xMax) && xMax!="" && xMax!="-")
+                        {
+                            options.xMax=std::stold(xMax);
+                        }
+
+                        if(ImGui::InputText("Step", &xStep,ImGuiInputTextFlags_CharsScientific))
+                        {
+                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            std::string tmp=xStep;
+                            lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xStep,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                        }
+
+                        if(lessetB::isNumber(xStep) && xStep!="")
+                        {
+                            options.xStep=std::stold(xStep);
+                        };
 
                         ImGui::EndMenu();
                     }
@@ -1171,20 +1248,42 @@ int main(int, char**)
 
                     if(ImGui::BeginMenu("Other"))
                     {
-                        ImGui::SetNextItemWidth(248.f);
-                        ImGui::SliderFloat("Max error for ≈",&aroundTruthinessLeniency,0,1);
-                        ImGui::SetItemTooltip("When 2 values are close to equal, what is the maximum difference for which ≈ returns true?");
-                        if(aroundTruthinessLeniency<0) aroundTruthinessLeniency=0;
-                        if(aroundTruthinessLeniency>1) aroundTruthinessLeniency=1;
-                        options.aroundTruthinessLeniency=aroundTruthinessLeniency;
+                         ImGui::SetNextItemWidth(248.f);
+                        // ImGui::SliderFloat("Max error for ≈",&aroundTruthinessLeniencyFloat,0,1);
+                        
+                        if(ImGui::InputText("Max error for ≈", &aroundTruthinessLeniency,ImGuiInputTextFlags_CharsScientific))
+                        {
+                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            std::string tmp=aroundTruthinessLeniency;
+                            lessetB::mainLoop(evalOptions,true,false,tmp,nothing,aroundTruthinessLeniency,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                        }
 
-                        ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
-                        options.followImplicitMultiplicationPriorityConvention=followImplicitMultiplicationPriorityConvention;
-                        ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
-                        ImGui::SameLine();
+                        if(lessetB::isNumber(aroundTruthinessLeniency) && aroundTruthinessLeniency!="")
+                        {
+                            aroundTruthinessLeniencyFloat=std::stof(aroundTruthinessLeniency);
+                        }
+                        
+                        ImGui::SetItemTooltip("When 2 values are close to equal, what is the maximum difference for which ≈ returns true?");
+                        if(aroundTruthinessLeniencyFloat<0) 
+                        {
+                            aroundTruthinessLeniencyFloat=0;
+                            aroundTruthinessLeniency="0";
+                        }
+                        if(aroundTruthinessLeniencyFloat>1)
+                        {
+                            aroundTruthinessLeniencyFloat=1;
+                            aroundTruthinessLeniency="1";
+                        }
+                        options.aroundTruthinessLeniency=aroundTruthinessLeniencyFloat;
+                        
                         ImGui::Checkbox("Pretty output",&showFractions);
                         options.showFractions=showFractions;
                         ImGui::SetItemTooltip("Show some results as fractions or constants instead of decimal numbers.");
+                        ImGui::SameLine();
+                        ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
+                        options.followImplicitMultiplicationPriorityConvention=followImplicitMultiplicationPriorityConvention;
+                        ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
+
                         ImGui::EndMenu();
                     }
                     
@@ -1279,8 +1378,8 @@ int main(int, char**)
                             if(ImGui::MenuItem("∜")) equation.append("∜");
                             ImGui::SetItemTooltip("Quartic root (qtrt) function.");
 
-                            if(ImGui::MenuItem("root(")) equation.append("root(denominator,enumerator)");
-                            ImGui::SetItemTooltip("Nth root function, denominator on the left, enumerator right.\nMay be called with one argument for sqrt.");
+                            if(ImGui::MenuItem("root(")) equation.append("root(enumerator,denominator)");
+                            ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
                             ImGui::EndMenu();
                         }
 
@@ -1584,11 +1683,22 @@ int main(int, char**)
             }
             if(animateSlider)
             {
-                sliderValue+=0.01;
-                if(sliderValue>10) sliderValue=0;
-                if(sliderValue<0) sliderValue=0;
+                sliderValue+=(sliderMaxFloat-sliderMinFloat)/500;
+                timeStationary=0;
+
+                if(sliderMaxFloat>sliderMinFloat)
+                {
+                    if(sliderValue>sliderMaxFloat) sliderValue=sliderMinFloat;
+                    if(sliderValue<sliderMinFloat) sliderValue=sliderMinFloat;
+                }
+                else
+                {
+                    if(sliderValue<sliderMaxFloat) sliderValue=sliderMinFloat;
+                    if(sliderValue>sliderMinFloat) sliderValue=sliderMaxFloat;
+                }
+
                 std::string combinedStatement{"letslider="+std::to_string(sliderValue)};
-                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,true);
+                lessetB::mainLoop(options,true,false,combinedStatement,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                 recalculateGraphs=true;
                 updatePreviewGraph=true;
             }
@@ -1620,7 +1730,7 @@ int main(int, char**)
                 result="";
                 if(equation!="")
                 {
-                    lessetB::mainLoop(options,true,false,nonEmptyEquation,resultHistory,result,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                    lessetB::mainLoop(options,true,false,nonEmptyEquation,resultHistory,result,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                     options.ans=result;
                 }
                 
@@ -1669,13 +1779,15 @@ int main(int, char**)
                 ImPlotRect prevLimits {limits.X.Min, limits.X.Max, limits.Y.Min, limits.Y.Max};
                 limits = ImPlot::GetPlotLimits();
 
+                ImPlot::PlotLine("",emptyX,emptyY,2,specHidden);
+
                 bool skipRestOfFrame{};
                 if(graphsEquations.size()!=0 || (previewGraph))
                 {
                     for(int i{}; i<graphsEquations.size();i++)
                     {
                         std::string graphEquationExpandedMacros = graphsEquations.at(i);
-                        replaceAliases(graphEquationExpandedMacros, instances.at(selectedInstance));
+                        replaceMacros(graphEquationExpandedMacros, instances.at(selectedInstance));
                         bool hasX{};
                         if(graphEquationExpandedMacros.length()>=1 && graphEquationExpandedMacros.at(0)=='x') hasX=true;
                         for(int i{}; i<graphEquationExpandedMacros.length() && !hasX; i++)
@@ -1756,10 +1868,10 @@ int main(int, char**)
                                                     limits.X.Min,
                                                     limits.X.Max,
                                                     abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
-                                                    static_cast<size_t>(aroundTruthinessLeniency),
+                                                    static_cast<size_t>(aroundTruthinessLeniencyFloat),
                                                     interpolateDiscontinuities,
                                                     followImplicitMultiplicationPriorityConvention};
-                        lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                        lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                         graphsPoints.first.at(downsizeGraphIndex)=lessetB::globals::points.first;
                         graphsPoints.second.at(downsizeGraphIndex)=lessetB::globals::points.second;       
@@ -1773,7 +1885,7 @@ int main(int, char**)
                     if(previewGraph && graphEquation.size()>0)
                     {
                         std::string previewNonEmptyGraphEquation=graphEquation;
-                        replaceAliases(previewNonEmptyGraphEquation, instances.at(selectedInstance));
+                        replaceMacros(previewNonEmptyGraphEquation, instances.at(selectedInstance));
                         bool hasX{};
                         for(int i{}; i<previewNonEmptyGraphEquation.length(); i++)
                         {
@@ -1786,12 +1898,13 @@ int main(int, char**)
                         {                        
                             ImPlotSpec spec{};
                             spec.LineWeight=2.f;
+                            spec.Flags=ImPlotItemFlags_NoFit;
                             std::string previewNonEmptyGraphEquation=graphEquation;
 
                             if(updatePreviewGraph || !(prevLimits.X.Min == limits.X.Min && prevLimits.X.Max == limits.X.Max))
                             {
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*8,static_cast<size_t>(aroundTruthinessLeniency),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
-                                lessetB::mainLoop(graphOptions,true,false,previewNonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*8,static_cast<size_t>(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::mainLoop(graphOptions,true,false,previewNonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                                 liveGraphPoints.first=lessetB::globals::points.first;
                                 liveGraphPoints.second=lessetB::globals::points.second;
                             }
@@ -1837,6 +1950,7 @@ int main(int, char**)
                                        abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i)) < abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i-1)))
                                     {
                                         ImPlotSpec spec{};
+                                        spec.Flags=ImPlotItemFlags_NoFit;
                                         spec.MarkerLineColor=ImVec4{0,0,0,1};
                                         spec.MarkerFillColor=ImVec4(1,1,1,1);
                                         ImPlot::PlotScatter("##", &liveGraphPoints.second.at(i), 1, 0,liveGraphPoints.first.at(i),spec);
@@ -1851,11 +1965,13 @@ int main(int, char**)
                                     {
                                         xPreviousPointMarked=liveGraphPoints.first.at(i);
                                         ImPlotSpec spec{};
+                                        spec.Flags=ImPlotItemFlags_NoFit;
                                         spec.MarkerLineColor=ImVec4{0,0,0,1};
                                         spec.MarkerFillColor=ImVec4(1,1,1,1);
                                         ImPlot::PlotScatter("##", &liveGraphPoints.second.at(i), 1, 0,liveGraphPoints.first.at(i),spec);
                                         
-                                        if(abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))<(limits.X.Max-limits.X.Min)/10 && abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))>(limits.X.Max-limits.X.Min)/100)
+                                        if(abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                           abs(ImPlot::GetPlotMousePos().y-liveGraphPoints.second.at(i))<(limits.Y.Max-limits.Y.Min)/10)
                                         {
                                             if(textAbove) textAbove=false;
                                             else textAbove=true;
@@ -1869,12 +1985,14 @@ int main(int, char**)
                                     {
                                         xPreviousPointMarked=liveGraphPoints.first.at(i);
                                         ImPlotSpec spec{};
+                                        spec.Flags=ImPlotItemFlags_NoFit;
                                         spec.MarkerLineColor=ImVec4{0,0,0,1};
                                         spec.MarkerFillColor=ImVec4(1,1,1,1);
                                         const float zero=0;
                                         ImPlot::PlotScatter("##", &zero, 1, 0,liveGraphPoints.first.at(i),spec);
                                         
-                                        if(abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))<(limits.X.Max-limits.X.Min)/10 && abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))>(limits.X.Max-limits.X.Min)/100)
+                                        if(abs(ImPlot::GetPlotMousePos().x-liveGraphPoints.first.at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                           abs(ImPlot::GetPlotMousePos().y-liveGraphPoints.second.at(i))<(limits.Y.Max-limits.Y.Min)/10)
                                         {
                                             if(textAbove) textAbove=false;
                                             else textAbove=true;
@@ -1907,10 +2025,10 @@ int main(int, char**)
                                                             limits.X.Min,
                                                             prevLimits.X.Min,
                                                             abs(dXMin)/(maxIndividualGraphPoints*dXMinScreenProportion/averagedPrecisionDivisor),
-                                                            static_cast<size_t>(aroundTruthinessLeniency),
+                                                            static_cast<size_t>(aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
                                                             followImplicitMultiplicationPriorityConvention};
-                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.at(j).insert_range(graphsPoints.first.at(j).begin(),lessetB::globals::points.first);
                                 graphsPoints.second.at(j).insert_range(graphsPoints.second.at(j).begin(),lessetB::globals::points.second);
@@ -1925,10 +2043,10 @@ int main(int, char**)
                                                             prevLimits.X.Max,
                                                             limits.X.Max,
                                                             abs(dXMax)/(maxIndividualGraphPoints/averagedPrecisionDivisor*dXMaxScreenProportion),
-                                                            static_cast<size_t>(aroundTruthinessLeniency),
+                                                            static_cast<size_t>(aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
                                                             followImplicitMultiplicationPriorityConvention};
-                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.at(j).append_range(lessetB::globals::points.first);
                                 graphsPoints.second.at(j).append_range(lessetB::globals::points.second);
@@ -1952,10 +2070,10 @@ int main(int, char**)
                                                         limits.X.Min,
                                                         limits.X.Max,
                                                         abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
-                                                        static_cast<size_t>(aroundTruthinessLeniency),
+                                                        static_cast<size_t>(aroundTruthinessLeniencyFloat),
                                                         interpolateDiscontinuities,
                                                         followImplicitMultiplicationPriorityConvention};
-                            lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                            lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                             graphsPoints.first.emplace_back(lessetB::globals::points.first);
                             graphsPoints.second.emplace_back(lessetB::globals::points.second);
@@ -1975,8 +2093,8 @@ int main(int, char**)
                             for(size_t j{}; j<graphsEquations.size(); j++)
                             {
                                 nonEmptyGraphEquation=graphsEquations.at(j);
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,static_cast<size_t>(aroundTruthinessLeniency),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
-                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userAliases,false);
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,static_cast<size_t>(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.emplace_back(lessetB::globals::points.first);
                                 graphsPoints.second.emplace_back(lessetB::globals::points.second);
@@ -2021,6 +2139,7 @@ int main(int, char**)
                         }
 
                         ImPlotSpec spec{};
+                        spec.Flags=ImPlotItemFlags_NoFit;
                         spec.LineWeight=2.f;
 
                         if(timeStationary<HIGHPRECISIONDRAWDELAY) ImPlot::PlotLine(graphsEquations.at(j).c_str(), &(*graphsPoints.first.at(j).cbegin()), &(*graphsPoints.second.at(j).cbegin()), graphsPoints.second.at(j).size(),spec);
@@ -2040,12 +2159,18 @@ int main(int, char**)
                                 {
                                     hasShownPoint=true;
                                     ImPlotSpec spec{};
+                                    spec.Flags=ImPlotItemFlags_NoFit;
                                     spec.MarkerLineColor=ImVec4{0,0,0,1};
                                     spec.MarkerFillColor=ImVec4(1,1,1,1);
-                                    ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
-                                    std::string coordsFormatted= "x: " + std::to_string(graphsPoints.first.at(j).at(i))+ "\ny: " + std::to_string(graphsPoints.second.at(j).at(i));
-                                    ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(80,20));
-                                    
+                                    if(abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/5)
+                                    {
+                                        ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
+                                        if(abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/20)
+                                        {
+                                            std::string coordsFormatted= "x: " + std::to_string(graphsPoints.first.at(j).at(i))+ "\ny: " + std::to_string(graphsPoints.second.at(j).at(i));
+                                            ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(80,20));
+                                        }
+                                    }
                                 }
 
                                 if(((graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i+increment) && graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i-increment)) ||
@@ -2054,11 +2179,13 @@ int main(int, char**)
                                 {
                                     xPreviousPointMarked=graphsPoints.first.at(j).at(i);
                                     ImPlotSpec spec{};
+                                    spec.Flags=ImPlotItemFlags_NoFit;
                                     spec.MarkerLineColor=ImVec4{0,0,0,1};
                                     spec.MarkerFillColor=ImVec4(1,1,1,1);
                                     ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
                                     
-                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 && abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))>(limits.X.Max-limits.X.Min)/100)
+                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                       abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
                                     {
                                         if(textAbove) textAbove=false;
                                         else textAbove=true;
@@ -2072,12 +2199,14 @@ int main(int, char**)
                                 {
                                     xPreviousPointMarked=graphsPoints.first.at(j).at(i);
                                     ImPlotSpec spec{};
+                                    spec.Flags=ImPlotItemFlags_NoFit;
                                     spec.MarkerLineColor=ImVec4{0,0,0,1};
                                     spec.MarkerFillColor=ImVec4(1,1,1,1);
                                     const float zero=0;
                                     ImPlot::PlotScatter("##", &zero, 1, 0,graphsPoints.first.at(j).at(i),spec);
                                     
-                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 && abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))>(limits.X.Max-limits.X.Min)/100)
+                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                       abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
                                     {
                                         if(textAbove) textAbove=false;
                                         else textAbove=true;
@@ -2143,21 +2272,21 @@ bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &poin
 }
 
 
-bool replaceAliases(std::string &equation, Instance &instance)
+bool replaceMacros(std::string &equation, Instance &instance)
 {
-    if(instance.userAliases.size()==0) return false;
-    for(size_t i{}; i<instance.userAliases.size(); i++)
+    if(instance.userMacros.size()==0) return false;
+    for(size_t i{}; i<instance.userMacros.size(); i++)
     {
         for(int j{}; j<equation.length(); j++)
         {
-            if(equation.find(instance.userAliases.at(i).name,j)==j)
+            if(equation.find(instance.userMacros.at(i).name,j)==j)
             {
                 if(j>=3 && equation.find("set",j-3)==j-3)
                 {
                     break;
                 }
-                equation.erase(j,instance.userAliases.at(i).name.length());
-                equation.insert(j,instance.userAliases.at(i).value);
+                equation.erase(j,instance.userMacros.at(i).name.length());
+                equation.insert(j,instance.userMacros.at(i).value);
                 i=0;
                 j=-1;
             }

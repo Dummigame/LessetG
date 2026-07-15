@@ -22,14 +22,12 @@
 
 namespace lessetB
 {
-
-void displayHelp(std::string& result,char arg='a');
 bool isValidInput(char);
 
 using boost::multiprecision::cpp_dec_float_100;
 
-std::random_device randev;
-std::mt19937 randomMt(randev());
+inline std::random_device randev;
+inline std::mt19937 randomMt(randev());
 
 #define MAXOUTPUTPRECISION 100
 
@@ -84,7 +82,7 @@ enum class token_t
     VARIABLE,
     CONSTANT,
     ASSIGNMENTVARIABLE,
-    ASSIGNMENTALIAS,
+    ASSIGNMENTMACRO,
     INVALID
 };
 
@@ -130,21 +128,21 @@ struct Variable
     std::string value;
 };
 
-struct Alias
+struct Macro
 {
-    Alias(std::string inName, std::string inValue) : name(inName), value(inValue){}
+    Macro(std::string inName, std::string inValue) : name(inName), value(inValue){}
     std::string name;
     std::string value;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool sortVariablesByNameLength(Variable name1, Variable name2)
+inline bool sortVariablesByNameLength(Variable name1, Variable name2)
 {
     return name1.name.length()>name2.name.length();
 }
 
-bool sortAliasesByNameLength(Alias name1, Alias name2)
+inline bool sortMacroesByNameLength(Macro name1, Macro name2)
 {
     return name1.name.length()>name2.name.length();
 }
@@ -156,13 +154,13 @@ class Token;
 
 namespace globals
 {
-    Options aroundLeniency;
-    std::vector<Variable> userVariables;
-    std::vector<Alias> userAliases;
-    std::pair<std::vector<double>,std::vector<double>> points; 
-    std::string previousResult;
+    inline Options aroundLeniency;
+    inline std::vector<Variable> userVariables;
+    inline std::vector<Macro> userMacros;
+    inline std::pair<std::vector<double>,std::vector<double>> points; 
+    inline std::string previousResult;
 
-    std::unordered_map<std::string, std::vector<Token>> tokenMemory;
+    inline std::unordered_map<std::string, std::vector<Token>> tokenMemory;
     
     const std::unordered_map<std::string, token_t> symbols
     {
@@ -174,7 +172,6 @@ namespace globals
         {"<",    token_t::BINARYOP},
         {">",    token_t::BINARYOP},
         {"=",    token_t::BINARYOP},
-
         {"mod",    token_t::BINARYOP},
         {"nPk",    token_t::BINARYOP},
         {"nCk",    token_t::BINARYOP},
@@ -190,7 +187,6 @@ namespace globals
 
         {"!", token_t::UNARYOP},
         {"-", token_t::UNARYOP},
-
         {"!!", token_t::UNARYOP},
 
         {"pi", token_t::CONSTANT },
@@ -492,7 +488,7 @@ class Token
     static token_t isAssignment(const std::string &input)
     {
         if((input.find("let")==0) && input.find('=')!=std::string::npos) return token_t::ASSIGNMENTVARIABLE;
-        else if(input.find("set")==0 && input.find('=')!=std::string::npos) return token_t::ASSIGNMENTALIAS;
+        else if(input.find("set")==0 && input.find('=')!=std::string::npos) return token_t::ASSIGNMENTMACRO;
 
         else return token_t::INVALID;
     }
@@ -551,7 +547,6 @@ class Token
         }
 
         return "0";
-        std::unreachable();
     }
     ///////////////////////////////////////////////
     static tokenCategory_t determineTokenCategory(token_t &type)
@@ -565,7 +560,7 @@ class Token
 
         else if(type==token_t::FUNCTION) return tokenCategory_t::FUNCTION;
 
-        else if(type==token_t::ASSIGNMENTVARIABLE || type==token_t::ASSIGNMENTALIAS) return tokenCategory_t::ASSIGNMENT;
+        else if(type==token_t::ASSIGNMENTVARIABLE || type==token_t::ASSIGNMENTMACRO) return tokenCategory_t::ASSIGNMENT;
 
         else if(type==token_t::INVALID) return tokenCategory_t::INVALID;
 
@@ -652,17 +647,17 @@ template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<
 template <typename T> Point decimalToFraction(T enumerator);
 
 bool addIdentifier(Variable newConstant);
-bool addIdentifier(Alias newAlias);
-bool replaceAliases(std::string &equation);
+bool addIdentifier(Macro newMacro);
+bool replaceMacros(std::string &equation);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, std::string &equation, std::string &resultHistory, std::string &result, std::vector<Variable> &userVariables, std::vector<Alias> &userAliases, bool canDeclareIdentifiers=false)
+inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, std::string &equation, std::string &resultHistory, std::string &result, std::vector<Variable> &userVariables, std::vector<Macro> &userMacros, bool canDeclareIdentifiers=false)
 {
 
     globals::userVariables=userVariables;
-    globals::userAliases=userAliases;
+    globals::userMacros=userMacros;
 
     globals::aroundLeniency=options;
     std::cout.precision(100);
@@ -747,7 +742,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             }
         }
 
-        if(replaceAliases(equation))
+        if(replaceMacros(equation))
         {
             equation.clear();
             if(passedCalculationsFile) return false;
@@ -789,7 +784,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 std::string identifierName{tokens.at(i).value().substr(3,tokens.at(i).value().length()-4)};
                 if(globals::constants.find(identifierName)!=globals::constants.end() ||
                     tokens.at(i).value().find("variable")!=std::string::npos||
-                    tokens.at(i).value().find("alias")!=std::string::npos) invalidName=true;
+                    tokens.at(i).value().find("macro")!=std::string::npos) invalidName=true;
                 
                 if(invalidName)
                 {
@@ -812,13 +807,13 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                 }
                 if(invalidName) break;
 
-                for(j=i+1; j<tokens.size() && tokens.at(j).type()!=token_t::ASSIGNMENTALIAS && tokens.at(j).type()!=token_t::VARIABLE; j++)
+                for(j=i+1; j<tokens.size() && tokens.at(j).type()!=token_t::ASSIGNMENTMACRO && tokens.at(j).type()!=token_t::VARIABLE; j++)
                 {
                     if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE && tokens.at(j).type()==token_t::ASSIGNMENTVARIABLE) break;
                     assignmentTokens.emplace_back(tokens.at(j));
                 }
                 if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE) resultAsOSStream<<calculation<cpp_dec_float_100>(assignmentTokens, NAN);
-                else if(tokens.at(i).type()==token_t::ASSIGNMENTALIAS)
+                else if(tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
                 {
                     resultAsOSStream<<equation.substr(equation.find(tokens.at(i).value())+tokens.at(i).value().length());
                 }
@@ -829,8 +824,8 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
                    identifierName!=resultAsOSStream.str()) failed=addIdentifier(Variable(std::string(identifierName),resultAsOSStream.str()));
                 
                 else if(resultAsOSStream.str().find("nan")==std::string::npos &&
-                        tokens.at(i).type()==token_t::ASSIGNMENTALIAS &&
-                        identifierName!=resultAsOSStream.str()) failed=addIdentifier(Alias(std::string(identifierName),resultAsOSStream.str()));
+                        tokens.at(i).type()==token_t::ASSIGNMENTMACRO &&
+                        identifierName!=resultAsOSStream.str()) failed=addIdentifier(Macro(std::string(identifierName),resultAsOSStream.str()));
         
                 if(!failed &&
                 resultAsOSStream.str().find("nan")==std::string::npos &&
@@ -858,7 +853,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
             globals::tokenMemory.clear();
             getTokens("",true);
 
-            userAliases=globals::userAliases;
+            userMacros=globals::userMacros;
             userVariables=globals::userVariables;
             return false;
         }
@@ -1038,7 +1033,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
         // globals::tokenMemory.clear();
         getTokens("",true);
 
-        userAliases=globals::userAliases;
+        userMacros=globals::userMacros;
         userVariables=globals::userVariables;
 
 
@@ -1047,7 +1042,7 @@ bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
+inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
 {
     if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<float>(globals::aroundLeniency.xStep)*5;
     std::vector<Point> points;
@@ -1060,7 +1055,7 @@ std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool isValidInput(const char c)
+inline bool isValidInput(const char c)
 {
     return !(c=='\t' || c=='\n' || c==' ');
 
@@ -1072,7 +1067,7 @@ bool isValidInput(const char c)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount)
+inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount)
 {
     size_t initialI{i};
     i=0;
@@ -1127,8 +1122,11 @@ void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
+inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
 {
+    std::ostringstream resultAsOSStream;
+    resultAsOSStream.precision(MAXOUTPUTPRECISION);
+
     if(globals::tokenMemory.find(input)!=globals::tokenMemory.end())
     {
         return globals::tokenMemory.find(input)->second;
@@ -1151,13 +1149,9 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
     std::string currentToken{};
     bool fixOffByOne{};
     bool inFunctionCall{};
-    bool rootHasTwoArgs{};
-    bool logHasTwoArgs{};
-    int inParentheses{};
 
     for(size_t i{}; i<input.length(); i++)
     {
-
         // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.
         if(currentToken=="" && input.at(i)=='|') for(startOfFunction=i; i<input.length(); i++)
         {
@@ -1175,16 +1169,16 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
             }
             if(input.at(i)==')')
             {
-                inParentheses--;
+                nestingLevel--;
                 nestingLevel--;
             }
             else if(input.at(i)=='(')
             {
-                inParentheses++;
+                nestingLevel++;
                 nestingLevel++;
             }
-            if(i<input.length() && inParentheses==false && input.at(i)=='|') absNestingLevel--;
-            if(i>startOfFunction+1 && nestingLevel<=0 && absNestingLevel==0 && inParentheses==false && input.at(i)=='|' || 
+            if(i<input.length() && nestingLevel==false && input.at(i)=='|') absNestingLevel--;
+            if(i>startOfFunction+1 && nestingLevel<=0 && absNestingLevel==0 && nestingLevel==false && input.at(i)=='|' || 
                (i==input.length()-1 && input.at(i)=='|')) 
             {
                 currentToken.push_back(input.at(i));
@@ -1202,9 +1196,9 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
         else if(!inFunctionCall && input.find("median(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"median",i,inFunctionCall);
         else if(!inFunctionCall && input.find("stdevp(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"stdevp",i,inFunctionCall);
         else if(!inFunctionCall && input.find("max(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"max",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("sabs(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sabs",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall,3);
-        else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall,3);
+        else if(!inFunctionCall && input.find("sabs(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sabs",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall);
         else if(!inFunctionCall && input.find("gcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcf",i,inFunctionCall);
         else if(!inFunctionCall && input.find("hcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcf",i,inFunctionCall);
         else if(!inFunctionCall && input.find("hcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcd",i,inFunctionCall);
@@ -1213,10 +1207,10 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
         else if(!inFunctionCall && input.find("lcm(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"lcm",i,inFunctionCall);
         else if(!inFunctionCall && input.find("min(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"min",i,inFunctionCall);
         else if(!inFunctionCall && input.find("rndsel(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndsel",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall,3);
+        else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall);
 
         // Parse Subexpression
         if(currentToken=="" && !inFunctionCall && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1247,12 +1241,12 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
         if(currentToken=="" && !inFunctionCall)
         {
             size_t k{};
-            for(; k<globals::userAliases.size(); k++)
+            for(; k<globals::userMacros.size(); k++)
             {
-                if(input.find(globals::userAliases.at(k).name,i)==i)
+                if(input.find(globals::userMacros.at(k).name,i)==i)
                 {
-                    currentToken=globals::userAliases.at(k).name;
-                    i+=globals::userAliases.at(k).name.length()-1;
+                    currentToken=globals::userMacros.at(k).name;
+                    i+=globals::userMacros.at(k).name.length()-1;
                 }
             }
             if(k && currentToken!="") goto cleanup;
@@ -1285,14 +1279,17 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
 
         // Parse Number
         if(currentToken=="")for(; i<input.length() &&
-                                  (std::isdigit(input.at(i)) ||
-                                  (i<input.length()-1 && input.at(i)=='.' && std::isdigit(input.at(i+1))) ||
+                                  (std::isdigit(input.at(i)) || // 5
+                                  
+                                  (i<input.length()-1 && input.at(i)=='.' && std::isdigit(input.at(i+1))) || // .5
+
                                   (i>0 && std::isdigit(input.at(i-1)) &&
-                                   input.at(i)=='e' &&
-                                   currentToken!="e" &&
+                                   input.at(i)=='e' && 
                                    i<input.length()-2 &&
                                    (input.at(i+1)=='+' || input.at(i+1)=='-') &&
-                                   std::isdigit(input.at(i+2)))); i++) // I am deeply sorry.
+                                   std::isdigit(input.at(i+2)))); i++) // 5e±5
+
+                                   // I am deeply sorry.
         {
             fixOffByOne=true;
             if(i+1<input.length() &&
@@ -1315,31 +1312,17 @@ std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
         if(currentToken!="") tokens.emplace_back(currentToken);
         currentToken.clear();
         inFunctionCall=false;
-        rootHasTwoArgs=false;
-        logHasTwoArgs=false;
         startOfFunction=0;
     }
     if(currentToken!="") tokens.emplace_back(currentToken);
     if(firstRun) firstRun=false;
-    globals::tokenMemory.emplace(input,tokens);
-    return tokens;
-}
 
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-T calculation(std::vector<Token> tokens, const T xValue)
-{
-    if(tokens.size()==0) return 0;
-    std::ostringstream resultAsOSStream;
-    if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
-    else resultAsOSStream.precision(15);
-        
+    
+    
     // Remove some stray operators
     if(tokens.at(0).typeCategory()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
 
-    // Implicit multiplication, removing unary plus, 
+    // Implicit multiplication, removing unary plus, so on
 
     for(size_t i{1}; i<tokens.size(); i++)
     {
@@ -1425,6 +1408,24 @@ T calculation(std::vector<Token> tokens, const T xValue)
             resultAsOSStream.clear();
         }
     }
+
+
+    globals::tokenMemory.emplace(input,tokens);
+    return tokens;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T calculation(std::vector<Token> tokens, const T xValue)
+{
+    if(tokens.size()==0) return 0;
+    std::ostringstream resultAsOSStream;
+    if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
+    else resultAsOSStream.precision(15);
+        
+    
 
 
     if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
@@ -2047,11 +2048,12 @@ T evaluateRoot(Token &arg, const T xValue)
     std::string currentToken;
     evaluateArgs(arg,xValue,intermediateResults,2);
     if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()==1) intermediateResults.emplace(intermediateResults.begin(),2); // Default argument
+    if(intermediateResults.size()==1) intermediateResults.emplace_back(2); // Default argument
 
-    std::swap(intermediateResults.at(0),intermediateResults.at(1)); // My brain is too fried to change the code below. Don't kill me.
+    // std::swap(intermediateResults.at(0),intermediateResults.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
     Point frac {decimalToFraction(intermediateResults.at(1))};
+    if(intermediateResults.at(0)==0) return NAN;
     if(abs(frac.x)!=INFINITY)
     {
         if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && intermediateResults.at(0)<0)
@@ -2238,8 +2240,9 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool isNumber(const std::string &input)
+inline bool isNumber(const std::string &input)
 {
+    if(input=="") return false;
     for(size_t i{}; i<input.length(); i++) if((input.at(i)<'0' || input.at(i)>'9') && 
                                                input.at(i)!='e' && 
                                                input.at(i)!='.' &&
@@ -2254,6 +2257,7 @@ bool isNumber(const std::string &input)
     if(input=="nan") return true;
     if(input=="-nan") return true;
     if(input=="e") return false;
+    if(input=="-") return false;
     for(size_t i{}; i<input.length(); i++)
     {
         if((seenMinus && input.at(i)=='-')||(i>0 && input.at(i)=='-' && input.at(i-1)!='e')) return false;
@@ -2282,28 +2286,28 @@ bool isNumber(const std::string &input)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool isNumberPart(const char input)
+inline bool isNumberPart(const char input)
 {
     return (input>='0' && input<='9') || input=='.' || input=='e';
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool replaceAliases(std::string &equation)
+inline bool replaceMacros(std::string &equation)
 {
-    if(globals::userAliases.size()==0) return false;
-    for(size_t i{}; i<globals::userAliases.size(); i++)
+    if(globals::userMacros.size()==0) return false;
+    for(size_t i{}; i<globals::userMacros.size(); i++)
     {
         for(int j{}; j<equation.length(); j++)
         {
-            if(equation.find(globals::userAliases.at(i).name,j)==j)
+            if(equation.find(globals::userMacros.at(i).name,j)==j)
             {
                 if(j>=3 && equation.find("set",j-3)==j-3)
                 {
                     break;
                 }
-                equation.erase(j,globals::userAliases.at(i).name.length());
-                equation.insert(j,globals::userAliases.at(i).value);
+                equation.erase(j,globals::userMacros.at(i).name.length());
+                equation.insert(j,globals::userMacros.at(i).value);
                 i=0;
                 j=-1;
             }
@@ -2315,7 +2319,7 @@ bool replaceAliases(std::string &equation)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-long long unguardedGcd(long long a, long long b)
+inline long long unguardedGcd(long long a, long long b)
 {
     if(b==0) return a;
     else return unguardedGcd(b,a%b);
@@ -2342,7 +2346,7 @@ Point decimalToFraction(T enumerator)
     size_t length = number.substr(number.find('.')+1).length();
     std::string pattern=number.substr(number.find('.')+1,length/2-1);
     size_t patternInstancesFound{};
-    for(size_t i{}; i<number.length() && pattern!=""; i++)
+    for(size_t i{}; i<number.length() && pattern!="" && length>2; i++)
     {
         if(number.find(pattern,i)==i)
         {
@@ -2376,11 +2380,11 @@ Point decimalToFraction(T enumerator)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool addIdentifier(Variable newVariable)
+inline bool addIdentifier(Variable newVariable)
 {
-    for(size_t i{}; i<globals::userAliases.size(); i++)
+    for(size_t i{}; i<globals::userMacros.size(); i++)
     {
-        if(newVariable.name==globals::userAliases.at(i).name) 
+        if(newVariable.name==globals::userMacros.at(i).name) 
         {
             std::cerr<<"Duplicate names are not permissible.\n\n";
             return true;
@@ -2400,27 +2404,27 @@ bool addIdentifier(Variable newVariable)
     return false;
 }
 
-bool addIdentifier(Alias newAlias)
+inline bool addIdentifier(Macro newMacro)
 {
     for(size_t i{}; i<globals::userVariables.size(); i++)
     {
-        if(newAlias.name==globals::userVariables.at(i).name) 
+        if(newMacro.name==globals::userVariables.at(i).name) 
         {
             std::cerr<<"\nDuplicate names are not permissible.\n";
             return true;
         }
     }
-    for(size_t i{}; i<globals::userAliases.size(); i++)
+    for(size_t i{}; i<globals::userMacros.size(); i++)
     {
-        if(newAlias.name==globals::userAliases.at(i).name) 
+        if(newMacro.name==globals::userMacros.at(i).name) 
         {
-            globals::userAliases.at(i).value=newAlias.value;
-            std::sort(globals::userAliases.begin(), globals::userAliases.end(), sortAliasesByNameLength);
+            globals::userMacros.at(i).value=newMacro.value;
+            std::sort(globals::userMacros.begin(), globals::userMacros.end(), sortMacroesByNameLength);
             return false;
         }
     }
-    globals::userAliases.emplace_back(newAlias);
-    std::sort(globals::userAliases.begin(), globals::userAliases.end(), sortAliasesByNameLength);
+    globals::userMacros.emplace_back(newMacro);
+    std::sort(globals::userMacros.begin(), globals::userMacros.end(), sortMacroesByNameLength);
     return false;
 }
 
