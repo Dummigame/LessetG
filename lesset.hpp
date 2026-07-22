@@ -1057,7 +1057,7 @@ inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double x
 
 inline bool isValidInput(const char c)
 {
-    return !(c=='\t' || c=='\n' || c==' ');
+    return !(c=='\t' || c=='\n' || c==' ' || c=='\\');
 
             /*(c>='0'&&c<='9')||c=='.'||c=='x'||c=='+'||c=='-'||c=='*'||c=='/'||c=='('||c==')'||c=='^'||c=='!'||c=='r'||c=='o'||c=='t'
             ||c==','||c=='e'||c=='s'||c=='i'||c=='n'||c=='c'||c=='a' ||c=='l'||c=='f'||c=='u'||c=='d'||c=='|'||c=='b'||c=='g'||c=='p'
@@ -1318,7 +1318,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     if(firstRun) firstRun=false;
 
     
-    
+    if(tokens.size()==0) return tokens;
     // Remove some stray operators
     if(tokens.at(0).typeCategory()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
 
@@ -1387,6 +1387,22 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         else break;
     }
 
+
+    globals::tokenMemory.emplace(input,tokens);
+    return tokens;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T calculation(std::vector<Token> tokens, const T xValue)
+{
+    if(tokens.size()==0) return 0;
+    std::ostringstream resultAsOSStream;
+    if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
+    else resultAsOSStream.precision(15);
+        
     // Replace ans, rnd, rndint with numbers
     for(size_t i{}; i<tokens.size(); i++)
     {
@@ -1407,25 +1423,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
             resultAsOSStream.str("");
             resultAsOSStream.clear();
         }
-    }
-
-
-    globals::tokenMemory.emplace(input,tokens);
-    return tokens;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-T calculation(std::vector<Token> tokens, const T xValue)
-{
-    if(tokens.size()==0) return 0;
-    std::ostringstream resultAsOSStream;
-    if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
-    else resultAsOSStream.precision(15);
-        
-    
+    }   
 
 
     if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);

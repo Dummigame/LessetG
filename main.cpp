@@ -3,12 +3,12 @@
     This program is based off of the GLFW-Vulkan example for ImGui.
 
 */
-#include "imgui.h"
-#include "imgui_impl_vulkan.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_stdlib.h"
-#include "implot.h"
-#include "implot_internal.h"
+#include "../imgui.h"
+#include "../imgui/backends/imgui_impl_vulkan.h"
+#include "../imgui/backends/imgui_impl_glfw.h"
+#include "../imgui/misc/cpp/imgui_stdlib.h"
+#include "../implot/implot.h"
+#include "../implot/implot_internal.h"
 #include "NotoSansMathRegular.hpp"
 
 
@@ -881,7 +881,7 @@ int main(int, char**)
 
                     if (ImGui::BeginMenu("Variables"))
                     {
-                        if (ImGui::BeginMenu("New"))
+                        if (ImGui::BeginMenu("Add or change"))
                         {
                             ImGui::InputText("Name",&newIdentifierNameVariable);
                             ImGui::InputText("Value",&newIdentifierValueVariable);
@@ -921,7 +921,7 @@ int main(int, char**)
 
                     if (ImGui::BeginMenu("Macros"))
                     {
-                        if (ImGui::BeginMenu("New"))
+                        if (ImGui::BeginMenu("Add or change"))
                         {
                             ImGui::InputText("Name",&newIdentifierNameMacro);
                             ImGui::InputText("Value",&newIdentifierValueMacro);
