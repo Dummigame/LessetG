@@ -1,4 +1,6 @@
 
+#include <boost/multiprecision/fwd.hpp>
+#include <cmath>
 #ifdef LESSET
     #error "Only include lesset.hpp once."
 #endif
@@ -78,6 +80,8 @@ enum class token_t
     SABS,
     MIX,
     MIN,
+    SUM,
+    SUMVAR,
     SUBEXPR,
     VARIABLE,
     CONSTANT,
@@ -257,6 +261,7 @@ namespace globals
         {"asech", token_t::FUNCTION},
         {"acsch", token_t::FUNCTION}, //aschhschhshuhuschush
         {"acoth", token_t::FUNCTION},
+        {"prime", token_t::FUNCTION},
 
         {"ln", token_t::FUNCTION},
         {"abs", token_t::FUNCTION},
@@ -266,8 +271,11 @@ namespace globals
         {"sat", token_t::FUNCTION},
         {"ReLU", token_t::FUNCTION},
         {"sstep", token_t::FUNCTION},
+        {"lgam", token_t::FUNCTION},
+        {"gam", token_t::FUNCTION},
 
         {"x", token_t::VARIABLE},
+        {"n", token_t::SUMVAR}
 
     };
 
@@ -373,6 +381,7 @@ namespace globals
         {"sabs", token_t::SABS},
         {"mix", token_t::MIX},
         {"if", token_t::IF},
+        {"sum", token_t::SUM},
     };
 
     const std::unordered_map<std::string, std::string> constants
@@ -551,9 +560,9 @@ class Token
     ///////////////////////////////////////////////
     static tokenCategory_t determineTokenCategory(token_t &type)
     {
-        if(type==token_t::NUMBER || type==token_t::VARIABLE || type==token_t::CONSTANT) return tokenCategory_t::NUMBER;
+        if(type==token_t::NUMBER || type==token_t::VARIABLE || type==token_t::CONSTANT || type==token_t::SUMVAR) return tokenCategory_t::NUMBER;
 
-        else if(type==token_t::SUBEXPR ||
+        else if(type==token_t::SUBEXPR || type==token_t::SUM ||
                 type==token_t::ROOT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS || type==token_t::IF ||
                 type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DERIVE || type==token_t::MIX ||
                 type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL) return tokenCategory_t::SUBEXPR;
@@ -622,10 +631,10 @@ std::vector<Token> getTokens(const std::string&, bool resetFirstRun=false);
 void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount=SIZE_MAX);
 void getVariableArgs(std::vector<Token>&, Options&);
 
-template <typename T = cpp_dec_float_100> T calculation(std::vector<Token>, const T xValue);
+template <typename T = cpp_dec_float_100> T calculation(std::vector<Token>, const T xValue, T sumVar=NAN);
 std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber);
 
-template <typename T = cpp_dec_float_100> T evaluateAbs(Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateAbs(Token &arg, const T xValue, const T sumVar);
 template <typename T = cpp_dec_float_100> T evaluateIf(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLog(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateRoot(Token &arg, const T xValue);
@@ -641,7 +650,7 @@ template <typename T = cpp_dec_float_100> T evaluateLeast(Token &arg, const T xV
 template <typename T = cpp_dec_float_100> T evaluateGcf(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLcm(Token &arg, const T xValue);
 
-template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval=SIZE_MAX);
+template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
 
 
 template <typename T> Point decimalToFraction(T enumerator);
@@ -788,7 +797,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 
                 if(invalidName)
                 {
-                    result+="Forbidden name\n";
+                    result+="Forbidden name";
                     tokens.clear();
                     invalidName=true;
                     break;
@@ -799,7 +808,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 {
                     if(nameCheckTokens.at(h).typeCategory()==tokenCategory_t::FUNCTION || nameCheckTokens.at(h).typeCategory()==tokenCategory_t::OPERATOR || nameCheckTokens.at(h).type()==token_t::NUMBER || nameCheckTokens.at(h).type()==token_t::VARIABLE)
                     {
-                        result+="Forbidden name\n";
+                        result+="Forbidden name";
                         tokens.clear();
                         invalidName=true;
                         break;
@@ -830,7 +839,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 if(!failed &&
                 resultAsOSStream.str().find("nan")==std::string::npos &&
                 identifierName!=resultAsOSStream.str()) result+="Assigned \"" + identifierName + "\" value " + resultAsOSStream.str()+'\n';
-                else result+="Cannot duplicate names or assign nan\n";
+                else result+="Forbidden name";
 
                 tokens.erase(tokens.begin()+i,tokens.begin()+j-i);
                 // globals::previousResult=resultAsOSStream.str();
@@ -989,6 +998,8 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 }
             }    
         }
+
+        // Show results equal to a constant as that constant
         bool isKnownConstant{};
         if(!hasX && options.showFractions && globals::valueToConstants.find(resultAsOSStream.str())!=globals::valueToConstants.end())
         {
@@ -1004,13 +1015,17 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
         }
 
+        // Check for fractions
         if(!hasX && options.showFractions && isNumber(resultAsOSStream.str()) && !isKnownConstant && resultAsOSStream.str().find('e')==std::string::npos)
         {
-            Point frac = decimalToFraction(std::stod(resultAsOSStream.str()));
+            Point frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
             resultAsOSStream.str("");
             resultAsOSStream<<frac.x<<'/'<<frac.y;
 
-            if(abs(frac.x)!=INFINITY && frac.y!=1 && resultAsOSStream.str().length()<12 && equation!=resultAsOSStream.str())
+            if(abs(frac.x)!=INFINITY && frac.y!=1 && 
+               resultAsOSStream.str().length()<12 && 
+               equation!=resultAsOSStream.str() && 
+               std::fmod(frac.y,10)!=0) // Stops something like 3.307 -> 3307/1000
             {
                 if(!passedCalculationsFile) result=resultAsOSStream.str();
                 else result+=equation+" = "+resultAsOSStream.str()+'\n';
@@ -1044,9 +1059,9 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
 inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
 {
-    if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<float>(globals::aroundLeniency.xStep)*5;
+    if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<double>(globals::aroundLeniency.xStep)*5;
     std::vector<Point> points;
-    for(;xValue<xValueMax; xValue+=static_cast<float>(globals::aroundLeniency.xStep))
+    for(;xValue<xValueMax; xValue+=static_cast<double>(globals::aroundLeniency.xStep))
     {
         points.emplace_back(xValue,calculation<double>(tokens,xValue));
     }
@@ -1057,7 +1072,7 @@ inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double x
 
 inline bool isValidInput(const char c)
 {
-    return !(c=='\t' || c=='\n' || c==' ' || c=='\\');
+    return !(c=='\t' || c=='\n' || c==' ' || c=='\\') && c>' ';
 
             /*(c>='0'&&c<='9')||c=='.'||c=='x'||c=='+'||c=='-'||c=='*'||c=='/'||c=='('||c==')'||c=='^'||c=='!'||c=='r'||c=='o'||c=='t'
             ||c==','||c=='e'||c=='s'||c=='i'||c=='n'||c=='c'||c=='a' ||c=='l'||c=='f'||c=='u'||c=='d'||c=='|'||c=='b'||c=='g'||c=='p'
@@ -1074,9 +1089,8 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
     size_t argFound{1};
     std::string currentToken;
     int nestingLevel{};
-    bool done{};
     size_t functionNameLength{};
-    for(; functionName[functionNameLength]!='\000'; functionNameLength++);
+    functionNameLength=strnlen(functionName,MAXKEYWORDLENGTH);
 
     for(; i<input.length(); i++)
     {
@@ -1110,7 +1124,6 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
             if(nestingLevel==0 || i==input.length()-1)
             {
                 tokens.emplace_back(currentToken);
-                done=true;
                 i+=initialI;
                 return;
             }
@@ -1137,13 +1150,10 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         firstRun=true;
         return std::vector<Token>();
     }
-    static std::string_view lastSeenResult{};
-    if(globals::previousResult!="nan") lastSeenResult=globals::previousResult;
     int nestingLevel{};
     int absNestingLevel{};
     int nestingOfFunction{};
     uint startOfFunction{};
-    uint endOfFirstArg{};
     std::vector<Token> tokens{};
     
     std::string currentToken{};
@@ -1211,6 +1221,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall);
         else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall);
         else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall);
 
         // Parse Subexpression
         if(currentToken=="" && !inFunctionCall && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1396,7 +1407,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T calculation(std::vector<Token> tokens, const T xValue)
+T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
 {
     if(tokens.size()==0) return 0;
     std::ostringstream resultAsOSStream;
@@ -1424,6 +1435,14 @@ T calculation(std::vector<Token> tokens, const T xValue)
             resultAsOSStream.clear();
         }
     }   
+    for(size_t i{}; i<tokens.size(); i++)
+    {
+        sumVar=floor(sumVar);
+        resultAsOSStream<<sumVar;
+        if(tokens.at(i).type()==token_t::SUMVAR) tokens.at(i)=Token(resultAsOSStream.str());
+        resultAsOSStream.str("");
+        resultAsOSStream.clear();
+    }
 
 
     if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
@@ -1436,46 +1455,42 @@ T calculation(std::vector<Token> tokens, const T xValue)
         {
             if(pass==SUBEXPRESSIONS)
             {
-                T evaluatedSubexpr{NAN};
-                if(tokens.at(i).type()==token_t::SUBEXPR) evaluatedSubexpr=calculation(getTokens(tokens.at(i).value()), xValue);
-                else if(tokens.at(i).type()==token_t::DERIVE) evaluatedSubexpr=evaluateDerive(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::MEAN) evaluatedSubexpr=evaluateMean(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::MEDIAN) evaluatedSubexpr=evaluateMedian(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::STDEVP) evaluatedSubexpr=evaluateStdevp(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::MAX) evaluatedSubexpr=evaluateMax(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::MIX) evaluatedSubexpr=evaluateMix(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::SABS) evaluatedSubexpr=evaluateSabs(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::SMAX) evaluatedSubexpr=evaluateSmax(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::SMIN) evaluatedSubexpr=evaluateSmin(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::GCF) evaluatedSubexpr=evaluateGcf(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::LCM) evaluatedSubexpr=evaluateLcm(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::MIN) evaluatedSubexpr=evaluateMin(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::RNDSEL) evaluatedSubexpr=evaluateRndsel(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::RNDINT) evaluatedSubexpr=evaluateRndint(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::ABS) evaluatedSubexpr=evaluateAbs(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::ROOT) evaluatedSubexpr=evaluateRoot(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::LOG) evaluatedSubexpr=evaluateLog(tokens.at(i), xValue);
-                else if(tokens.at(i).type()==token_t::IF) evaluatedSubexpr=evaluateIf(tokens.at(i), xValue);
-
-
                 if(tokens.at(i).typeCategory()==tokenCategory_t::SUBEXPR)
                 {
+                    T evaluatedSubexpr{NAN};
+
+                    switch(tokens.at(i).type())
+                    {
+                        case token_t::SUBEXPR: {evaluatedSubexpr=calculation(getTokens(tokens.at(i).value()), xValue, sumVar); break;}
+                        case token_t::DERIVE: {evaluatedSubexpr=evaluateDerive(tokens.at(i), xValue); break;}
+                        case token_t::MEAN: {evaluatedSubexpr=evaluateMean(tokens.at(i), xValue); break;}
+                        case token_t::MEDIAN: {evaluatedSubexpr=evaluateMedian(tokens.at(i), xValue); break;}
+                        case token_t::STDEVP: {evaluatedSubexpr=evaluateStdevp(tokens.at(i), xValue); break;}
+                        case token_t::MAX: {evaluatedSubexpr=evaluateMax(tokens.at(i), xValue); break;}
+                        case token_t::MIX: {evaluatedSubexpr=evaluateMix(tokens.at(i), xValue); break;}
+                        case token_t::SABS: {evaluatedSubexpr=evaluateSabs(tokens.at(i), xValue); break;}
+                        case token_t::SMAX: {evaluatedSubexpr=evaluateSmax(tokens.at(i), xValue); break;}
+                        case token_t::SMIN: {evaluatedSubexpr=evaluateSmin(tokens.at(i), xValue); break;}
+                        case token_t::GCF: {evaluatedSubexpr=evaluateGcf(tokens.at(i), xValue); break;}
+                        case token_t::LCM: {evaluatedSubexpr=evaluateLcm(tokens.at(i), xValue); break;}
+                        case token_t::MIN: {evaluatedSubexpr=evaluateMin(tokens.at(i), xValue); break;}
+                        case token_t::RNDSEL: {evaluatedSubexpr=evaluateRndsel(tokens.at(i), xValue); break;}
+                        case token_t::RNDINT: {evaluatedSubexpr=evaluateRndint(tokens.at(i), xValue); break;}
+                        case token_t::ABS: {evaluatedSubexpr=evaluateAbs(tokens.at(i), xValue, sumVar); break;}
+                        case token_t::ROOT: {evaluatedSubexpr=evaluateRoot(tokens.at(i), xValue); break;}
+                        case token_t::LOG: {evaluatedSubexpr=evaluateLog(tokens.at(i), xValue); break;}
+                        case token_t::IF: {evaluatedSubexpr=evaluateIf(tokens.at(i), xValue); break;}    
+                        case token_t::SUM: {evaluatedSubexpr=evaluateSum(tokens.at(i), xValue); break;}    
+                        default:{}                
+                    }
                     resultAsOSStream<<evaluatedSubexpr;
                     tokens.at(i)=Token(resultAsOSStream.str());
                     resultAsOSStream.str("");
                     resultAsOSStream.clear(); 
                 }
             }
-            else if(pass==UNARYOPS)
+            else if(pass==UNARYOPS && i!=0)
             {
-                if(i==0)
-                {
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if(tokens.at(j).type()==token_t::SUBEXPR) failedPass=SUBEXPRESSIONS;
-                    }
-                    continue;
-                }
                 if((tokens.at(i).type()==token_t::UNARYOP || tokens.at(i).type()==token_t::UNARYOP) && tokens.at(i-1).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i-1), tokens.at(i), xValue);
@@ -1487,66 +1502,66 @@ T calculation(std::vector<Token> tokens, const T xValue)
                     i--;
                 }
             }
-            else if(pass==EXPONENTIATION)
+            else if(pass==EXPONENTIATION && i==0)
             {
-                if(i==0)
+                for(i=tokens.size()-1; i>0; i--)
                 {
-                    for(uint j{}; j<tokens.size(); j++)
+                    if(i-2<tokens.size())
                     {
-                        if(tokens.at(j).type()==token_t::UNARYOP && failedPass==ADDITION) failedPass=UNARYOPS;
-                    }
-                    
-                    for(i=tokens.size()-1; i>0; i--)
-                    {
-                        if(i-2<tokens.size())
+                        // Account for something like x^-1
+                        if((tokens.at(i-2).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i-1).value()=="-" && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                         {
-                            // Account for something like x^-1
-                            if((tokens.at(i-2).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i-1).value()=="-" && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
-                            {
-                                T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
-                                resultAsOSStream << evaluatedUnary;
-                                tokens.at(i-1)=Token(resultAsOSStream.str());
-                                resultAsOSStream.str("");
-                                resultAsOSStream.clear();
-                                tokens.erase(tokens.begin()+i);                               
-                            }
-                            if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
-                            {
-                                T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                                resultAsOSStream << evaluatedBinary;
-                                tokens.at(i-2)=Token(resultAsOSStream.str());
-                                tokens.erase(tokens.begin()+i-1);
-                                tokens.erase(tokens.begin()+i-1);
-                                resultAsOSStream.str("");
-                                resultAsOSStream.clear();
-                            }
+                            T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
+                            resultAsOSStream << evaluatedUnary;
+                            tokens.at(i-1)=Token(resultAsOSStream.str());
+                            resultAsOSStream.str("");
+                            resultAsOSStream.clear();
+                            tokens.erase(tokens.begin()+i);                               
+                        }
+                        if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                        {
+                            T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
+                            resultAsOSStream << evaluatedBinary;
+                            tokens.at(i-2)=Token(resultAsOSStream.str());
+                            tokens.erase(tokens.begin()+i-1);
+                            tokens.erase(tokens.begin()+i-1);
+                            resultAsOSStream.str("");
+                            resultAsOSStream.clear();
                         }
                     }
                 }
             }
-            else if (pass==FUNCTIONS)
+            else if (pass==FUNCTIONS && i!=0)
             {
-                if(i==0)
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if(tokens.at(j).value()=="^" && failedPass==ADDITION) failedPass=EXPONENTIATION;
-                    }
 
                 // Account for something like sin-1... or sqrt-1 if the user feels funny.
-                if(i!=0 && i<tokens.size()-1 && tokens.at(i-1).type()==token_t::FUNCTION  && tokens.at(i).value()=="-" && tokens.at(i+1).typeCategory()==tokenCategory_t::NUMBER)
+                if(i<tokens.size()-1 && tokens.at(i-1).type()==token_t::FUNCTION  && tokens.at(i).value()=="-" && tokens.at(i+1).typeCategory()==tokenCategory_t::NUMBER)
                 {
-                    tokens.at(i)=Token('-'+tokens.at(i+1).value());
-                    resultAsOSStream << evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
-                    tokens.at(i-1)=Token(resultAsOSStream.str());
+                    resultAsOSStream<<evaluateUnary(tokens.at(i+1), tokens.at(i), xValue);
+                    tokens.at(i)=Token(resultAsOSStream.str());
                     resultAsOSStream.str("");
                     resultAsOSStream.clear();
-                    tokens.erase(tokens.begin()+i,tokens.begin()+i+2);                          
+                    tokens.erase(tokens.begin()+i+1);                          
                 }
-                if(i!=0&&(tokens.at(i-1).type()==token_t::FUNCTION) && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                // sin 3 h* x
+                if(i<tokens.size()-2 && 
+                  tokens.at(i-1).type()==token_t::FUNCTION  && 
+                  tokens.at(i).typeCategory()==tokenCategory_t::NUMBER && 
+                  tokens.at(i+1).value()=="h*" && 
+                  tokens.at(i+2).typeCategory()==tokenCategory_t::NUMBER)
+                {
+                    resultAsOSStream<<evaluateBinary(tokens.at(i),tokens.at(i+1), tokens.at(i+2), xValue);
+                    tokens.at(i)=Token(resultAsOSStream.str());
+                    resultAsOSStream.str("");
+                    resultAsOSStream.clear();
+                    tokens.erase(tokens.begin()+i+1,tokens.begin()+i+3);                          
+                }
+
+                if((tokens.at(i-1).type()==token_t::FUNCTION) && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
 
-                    if((tokens.at(i-1).value()=="sin" || tokens.at(i-1).value()=="cos") && abs(evaluatedUnary)<std::numeric_limits<T>::epsilon()) 
+                    if((tokens.at(i-1).value()=="sin" || tokens.at(i-1).value()=="cos") && abs(evaluatedUnary)<std::numeric_limits<T>::epsilon())
                     {
                         evaluatedUnary=0;
                     }
@@ -1561,12 +1576,7 @@ T calculation(std::vector<Token> tokens, const T xValue)
             }
             else if (pass==UNARYMINUS)
             {
-                if(i==0)
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if(tokens.at(j).type()==token_t::FUNCTION && failedPass==ADDITION) failedPass=FUNCTIONS;
-                    }
-                if(i!=0&&(tokens.at(i-1).value()=="-") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(i!=0 && (tokens.at(i-1).value()=="-") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
                     resultAsOSStream << evaluatedUnary;
@@ -1578,9 +1588,8 @@ T calculation(std::vector<Token> tokens, const T xValue)
                 }
             }
 
-            else if(pass==MULTIPLICATIONIMPLICIT && globals::aroundLeniency.followImplicitMultiplicationPriorityConvention)
+            else if(pass==MULTIPLICATIONIMPLICIT && globals::aroundLeniency.followImplicitMultiplicationPriorityConvention && i>1)
             {
-                if(i<=1) continue;
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
@@ -1594,15 +1603,16 @@ T calculation(std::vector<Token> tokens, const T xValue)
                 }                
             }
 
-            else if(pass==MULTIPLICATION)
+            else if(pass==MULTIPLICATION && i>1)
             {
-                if(i==0)
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if(tokens.at(j).value()=="-" && failedPass==ADDITION) failedPass=UNARYMINUS;
-                    }
-                if(i<=1) continue;
-                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*" || tokens.at(i-1).value()=="*" || tokens.at(i-1).value()=="/" || tokens.at(i-1).value()=="nCk" || tokens.at(i-1).value()=="nPk" || tokens.at(i-1).value()=="mod" || tokens.at(i-1).value()=="%") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*" || 
+                                                                                tokens.at(i-1).value()=="*" || 
+                                                                                tokens.at(i-1).value()=="/" || 
+                                                                                tokens.at(i-1).value()=="nCk" || 
+                                                                                tokens.at(i-1).value()=="nPk" || 
+                                                                                tokens.at(i-1).value()=="mod" || 
+                                                                                tokens.at(i-1).value()=="%") && 
+                                                                                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
                     resultAsOSStream << evaluatedBinary;
@@ -1614,15 +1624,9 @@ T calculation(std::vector<Token> tokens, const T xValue)
                     i-=2;
                 }
             }
-            else if(pass==ADDITION)
+            else if(pass==ADDITION && i>1)
             {
-                if(i==0)
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if((tokens.at(j).value()=="*"||tokens.at(j).value()=="%"||tokens.at(j).value()=="mod"||tokens.at(j).value()=="nPk"||tokens.at(j).value()=="nCk"||tokens.at(j).value()=="/") && failedPass==ADDITION) failedPass=MULTIPLICATION;
-                    }
-                if(i<=1) continue;
-                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="+" || tokens.at(i-1).value()=="-") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="+") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
                     resultAsOSStream << evaluatedBinary;
@@ -1634,14 +1638,8 @@ T calculation(std::vector<Token> tokens, const T xValue)
                     i-=2;
                 }
             }
-            else if(pass==COMPARISONS)
+            else if(pass==COMPARISONS && i>1)
             {
-                if(i==0)
-                    for(uint j{}; j<tokens.size(); j++)
-                    {
-                        if((tokens.at(j).value()=="+")) failedPass=ADDITION;
-                    }
-                if(i<=1) continue;
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="<" ||
                                                                                 tokens.at(i-1).value()==">" || 
                                                                                 tokens.at(i-1).value()==">=" || 
@@ -1660,9 +1658,8 @@ T calculation(std::vector<Token> tokens, const T xValue)
                     i-=2;
                 }
             }
-            else if(pass==LOGICALS)
+            else if(pass==LOGICALS && i>1)
             {
-                if(i<=1) continue;
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="AND" ||
                                                                                 tokens.at(i-1).value()=="OR" || 
                                                                                 tokens.at(i-1).value()=="XOR" || 
@@ -1694,9 +1691,32 @@ T calculation(std::vector<Token> tokens, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateAbs(Token &arg, const T xValue)
+T evaluateAbs(Token &arg, const T xValue, const T sumVar)
 {
-    return abs(calculation<T>(getTokens(arg.value()), xValue));
+    return abs(calculation<T>(getTokens(arg.value()), xValue,sumVar));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T evaluateSum(Token &arg, const T xValue)
+{
+    // expr, min, max
+    std::vector<T> intermediateResults;
+    evaluateArgs(arg,xValue,intermediateResults,3);
+    if(intermediateResults.size()<3) return NAN;
+    T sumVar{intermediateResults.at(1)};
+    const T sumMax{round(intermediateResults.at(2))};
+    T result{};
+    for(; sumVar<=sumMax; sumVar++)
+    {
+        intermediateResults.clear();
+        evaluateArgs(arg,xValue,intermediateResults,1,sumVar);
+        result+=intermediateResults.at(0);
+    }
+
+    
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1838,7 +1858,7 @@ T evaluateGcf(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval)
+void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval, T sumVar)
 {
     std::string currentToken;
     int nestingLevel{};
@@ -1850,11 +1870,11 @@ void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults
         if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
         else
         {
-            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue));
+            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
             currentToken.clear();
         }
     }
-    if(currentToken!="") intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue));
+    if(currentToken!="") intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2162,6 +2182,22 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
         else if(number<0) return 0;
         return pow(number,2)*(3-2*number);
     }
+
+    if(operation.value()=="prime")
+    {
+        number=floor(number);
+        if(number<=1) return false;
+        else if(number == 2 || number == 3) return true;
+        else if(fmod(number,2)==0 || fmod(number,3)==0) return false;
+        for(size_t i{5}; i*i<number; i+=6)
+        {
+            if(fmod(number,i) == 0 || fmod(number,i+2) == 0) return false;
+        }
+        return true;
+    }
+
+    if(operation.value()=="lgam") return lgamma(number);
+    if(operation.value()=="gam") return tgamma(number);
     
     if(operation.value()=="sat") return (1+abs(number)-abs(number-1))/2;
 
@@ -2341,16 +2377,25 @@ Point decimalToFraction(T enumerator)
     }
 
 
-    size_t length = number.substr(number.find('.')+1).length();
-    std::string pattern=number.substr(number.find('.')+1,length/2-1);
+    size_t length = number.substr(number.find('.')+1).length()-1;
+    bool hasTriedTwice{};
+    retry:
+    std::string pattern=number.substr(number.find('.')+1,length/2.f);
     size_t patternInstancesFound{};
-    for(size_t i{}; i<number.length() && pattern!="" && length>2; i++)
+    for(size_t i{number.find('.')+1}; i<number.length() && pattern!="" && length>=12; i++)
     {
         if(number.find(pattern,i)==i)
         {
             patternInstancesFound++;
             i+=pattern.length()-1;
         }
+    }
+    // std::cout<<patternInstancesFound<<std::endl;
+    if(patternInstancesFound<=1 && length>=12 && !hasTriedTwice)
+    {
+        length-=1;
+        hasTriedTwice=true;
+        goto retry;
     }
 
     
@@ -2364,16 +2409,15 @@ Point decimalToFraction(T enumerator)
         denominator=pow(10,pattern.length())-1;
         enumerator=(enumerator*denominator)+std::stoll(pattern);
     }
-    long long enumeratori=static_cast<double>(enumerator);
-    long long denominatori=static_cast<double>(denominator);
-    long long gcf = unguardedGcd(enumeratori,denominatori);
+    long long enumeratori=static_cast<long long>(enumerator);
+    long long denominatori=static_cast<long long>(denominator);
+    long long gcd = unguardedGcd(enumeratori,denominatori);
 
 
-    enumerator/=gcf;
-    denominator/=gcf;
+    enumerator/=gcd;
+    denominator/=gcd;
 
     return Point(static_cast<double>(enumerator),static_cast<double>(denominator));
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

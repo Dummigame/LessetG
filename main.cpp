@@ -12,6 +12,7 @@
 #include "NotoSansMathRegular.hpp"
 
 
+#include <cfloat>
 #include <cmath>
 #include <stdio.h>          
 #include <stdlib.h>         
@@ -504,7 +505,7 @@ int main(int, char**)
     std::string xStep="0.1";
 
     std::string aroundTruthinessLeniency="0.01";
-    float aroundTruthinessLeniencyFloat{0.01};
+    boost::multiprecision::cpp_dec_float_100 aroundTruthinessLeniencyFloat{0.01};
 
     std::string result;
 
@@ -554,9 +555,9 @@ int main(int, char**)
     std::pair<std::vector<std::vector<double>>,std::vector<std::vector<double>>> graphsPoints{};
 
     lessetB::Options options{0,0,0,0.1,2,true};
-    float xMinFloat{};
-    float xMaxFloat{};
-    float xStepFloat{0.1};
+    boost::multiprecision::cpp_dec_float_100 xMinFloat{};
+    boost::multiprecision::cpp_dec_float_100 xMaxFloat{};
+    boost::multiprecision::cpp_dec_float_100 xStepFloat{0.1};
 
     bool followImplicitMultiplicationPriorityConvention{true};
     bool showFractions{true};
@@ -862,7 +863,11 @@ int main(int, char**)
                                 lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
                                 std::string tmp=sliderMin;
                                 lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMin,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
-                                if(sliderMin!="" && lessetB::isNumber(sliderMin))sliderMinFloat=std::stof(sliderMin);
+                                
+                                if(sliderMin!="" && 
+                                   lessetB::isNumber(sliderMin) && 
+                                   static_cast<boost::multiprecision::cpp_dec_float_100>(sliderMin)<=FLT_MAX && 
+                                   static_cast<boost::multiprecision::cpp_dec_float_100>(sliderMin)>=-FLT_MAX) sliderMinFloat=std::stof(sliderMin);
                             }
                             ImGui::SameLine();
                             ImGui::SetNextItemWidth(100);
@@ -871,7 +876,10 @@ int main(int, char**)
                                 lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
                                 std::string tmp=sliderMax;
                                 lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMax,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
-                                if(sliderMax!="" && lessetB::isNumber(sliderMax))sliderMaxFloat=std::stof(sliderMax);
+                                if(sliderMax!="" && 
+                                   lessetB::isNumber(sliderMax) && 
+                                   static_cast<boost::multiprecision::cpp_dec_float_100>(sliderMax)<=FLT_MAX && 
+                                   static_cast<boost::multiprecision::cpp_dec_float_100>(sliderMax)>=-FLT_MAX) sliderMaxFloat=std::stof(sliderMax);
                             }
                             ImGui::Checkbox("Animate",&animateSlider);
                             ImGui::SetItemTooltip("This option will act like a CPU torture test.\nI am not responsible for your computer melting.");
@@ -1260,7 +1268,7 @@ int main(int, char**)
 
                         if(lessetB::isNumber(aroundTruthinessLeniency) && aroundTruthinessLeniency!="")
                         {
-                            aroundTruthinessLeniencyFloat=std::stof(aroundTruthinessLeniency);
+                            aroundTruthinessLeniencyFloat=static_cast<boost::multiprecision::cpp_dec_float_100>(aroundTruthinessLeniency);
                         }
                         
                         ImGui::SetItemTooltip("When 2 values are close to equal, what is the maximum difference for which ≈ returns true?");
@@ -1367,7 +1375,7 @@ int main(int, char**)
                     }
                     if(ImGui::BeginMenu("Functions"))
                     {
-                        if(ImGui::BeginMenu("Root"))
+                        if(ImGui::BeginMenu("Common"))
                         {
                             if(ImGui::MenuItem("√")) equation.append("√");
                             ImGui::SetItemTooltip("Square root (sqrt) function.");
@@ -1380,17 +1388,34 @@ int main(int, char**)
 
                             if(ImGui::MenuItem("root(")) equation.append("root(enumerator,denominator)");
                             ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
-                            ImGui::EndMenu();
-                        }
-
-                        if(ImGui::BeginMenu("Logarithm"))
-                        {                      
+           
                             if(ImGui::MenuItem("ln")) equation.append("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
 
                             if(ImGui::MenuItem("log(")) equation.append("log(base,value)");
                             ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
-                            
+
+                            if(ImGui::MenuItem("abs")) equation.append("abs");
+                            ImGui::SetItemTooltip("Absolute value as a function.");
+
+                            if(ImGui::MenuItem("sin")) equation.append("sin");
+                            ImGui::SetItemTooltip("Sine function.");
+
+                            if(ImGui::MenuItem("cos")) equation.append("cos");
+                            ImGui::SetItemTooltip("Cosine function.");      
+ 
+                            if(ImGui::MenuItem("tan")) equation.append("tan");
+                            ImGui::SetItemTooltip("Tangent function.");    
+      
+                            if(ImGui::MenuItem("asin")) equation.append("asin");
+                            ImGui::SetItemTooltip("Arcsine function.");
+
+                            if(ImGui::MenuItem("acos")) equation.append("acos");
+                            ImGui::SetItemTooltip("Arccosine function.");      
+ 
+                            if(ImGui::MenuItem("atan")) equation.append("atan");
+                            ImGui::SetItemTooltip("Arctangent function.");           
+                                                     
                             ImGui::EndMenu();
                         }
 
@@ -1431,6 +1456,9 @@ int main(int, char**)
 
                             if(ImGui::MenuItem("acot")) equation.append("acot");
                             ImGui::SetItemTooltip("Arccotangent function.");  
+
+                            if(ImGui::MenuItem("sinc")) equation.append("sinc");
+                            ImGui::SetItemTooltip("sinc(x) = sin(x)/x /; x ≠ 0, sinc(0) = 1.");
                             
                             ImGui::EndMenu();
                         }
@@ -1476,8 +1504,31 @@ int main(int, char**)
                             ImGui::EndMenu();
                         }
 
-                        if(ImGui::BeginMenu("Number Manip."))
+                        if(ImGui::BeginMenu("Calculus"))
+                        {    
+                            if(ImGui::MenuItem("exp")) equation.append("exp");
+                            ImGui::SetItemTooltip("exp(x) = e^x");
+
+                            if(ImGui::MenuItem("ln")) equation.append("ln");
+                            ImGui::SetItemTooltip("Log with base ℯ.");
+
+                            if(ImGui::MenuItem("log(")) equation.append("log(base,value)");
+                            ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
+
+                            if(ImGui::MenuItem("derive(")) equation.append("derive(");
+                            ImGui::SetItemTooltip("Approximates a derivative. Takes one argument.");
+                              
+                            if(ImGui::MenuItem("sum(")) equation.append("sum(expr, min, max)");
+                            ImGui::SetItemTooltip("Like Σ. Argument 1 is an expression (which may contain n), Argument 2 is minimum n, Argument 3 is maximum n\nWarning: this function is comically slow.");
+                                                      
+                            ImGui::EndMenu();
+                        }
+
+                        if(ImGui::BeginMenu("Number Theory"))
                         {
+                            if(ImGui::MenuItem("root(")) equation.append("root(enumerator,denominator)");
+                            ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
+              
                             if(ImGui::MenuItem("round")) equation.append("round");
                             ImGui::SetItemTooltip("Rounds number to nearest integer.");
 
@@ -1496,11 +1547,23 @@ int main(int, char**)
                             if(ImGui::MenuItem("sign")) equation.append("sign");
                             ImGui::SetItemTooltip("Returns sign of input. N<0 => -1, 0 => 0, N>0 => 1");
 
+                            if(ImGui::MenuItem("gcf(")) equation.append("gcf(round )");
+                            ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nInputs will be rounded when graphing.");
+
+                            if(ImGui::MenuItem("lcm(")) equation.append("lcm(round ");
+                            ImGui::SetItemTooltip("Calculates the lowest common multiple, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nInputs will be rounded when graphing.");
+
+                            if(ImGui::MenuItem("prime")) equation.append("prime");
+                            ImGui::SetItemTooltip("Returns 1 if a number is prime, else return 0.\nTry graphing this one, it's cool.");
+
                             ImGui::EndMenu();
                         }
 
                         if(ImGui::BeginMenu("Statistics"))
                         {
+                            if(ImGui::MenuItem("rndint(")) equation.append("rndint(min, max)");
+                            ImGui::SetItemTooltip("Takes a lower bound and upper bound, returns a random integer in range.");
+                            
                             if(ImGui::MenuItem("mean(")) equation.append("mean(");
                             ImGui::SetItemTooltip("Averages inputs, takes multiple arguments.");
 
@@ -1510,34 +1573,11 @@ int main(int, char**)
                             if(ImGui::MenuItem("stdevp(")) equation.append("stdevp(");
                             ImGui::SetItemTooltip("Population standard deviation, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("gcf(")) equation.append("gcf(round )");
-                            ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nTry using round.");
-
-                            if(ImGui::MenuItem("lcm(")) equation.append("lcm(round ");
-                            ImGui::SetItemTooltip("Calculates the lowest common multiple, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nTry using round.");
-
-                            if(ImGui::MenuItem("min(")) equation.append("min(");
-                            ImGui::SetItemTooltip("Evaluates all inputs and returns lowest, takes multiple arguments.");
-
                             if(ImGui::MenuItem("max(")) equation.append("max(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns greatest, takes multiple arguments.");
 
-                            ImGui::EndMenu();
-                        }
-
-                        if(ImGui::BeginMenu("Fun and Misc."))
-                        {
-                            if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
-                            ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
-
-                            if(ImGui::MenuItem("rndint(")) equation.append("rndint(min, max)");
-                            ImGui::SetItemTooltip("Takes a lower bound and upper bound, returns a random integer in range.");
-
-                            if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
-                            ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
-
-                            if(ImGui::MenuItem("derive(")) equation.append("derive(");
-                            ImGui::SetItemTooltip("Approximates a derivative. Takes one argument.");
+                            if(ImGui::MenuItem("min(")) equation.append("min(");
+                            ImGui::SetItemTooltip("Evaluates all inputs and returns lowest, takes multiple arguments.");
 
                             if(ImGui::MenuItem("smax(")) equation.append("smax(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Maximum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
@@ -1545,17 +1585,28 @@ int main(int, char**)
                             if(ImGui::MenuItem("smin(")) equation.append("smin(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Minimum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
 
+                            ImGui::EndMenu();
+                        }
+
+                        if(ImGui::BeginMenu("Misc."))
+                        {
+                            if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
+                            ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
+
+                            if(ImGui::MenuItem("lgam")) equation.append("lgam");
+                            ImGui::SetItemTooltip("Lgamma.");
+
+                            if(ImGui::MenuItem("gam")) equation.append("gam");
+                            ImGui::SetItemTooltip("Gamma.");
+                            
+                            if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
+                            ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
+
                             if(ImGui::MenuItem("sat")) equation.append("sat");
                             ImGui::SetItemTooltip("Linear transition between 0 and 1.");
                             
                             if(ImGui::MenuItem("sstep")) equation.append("sstep");
                             ImGui::SetItemTooltip("Smooth transition between 0 and 1.");
-
-                            if(ImGui::MenuItem("sinc")) equation.append("sinc");
-                            ImGui::SetItemTooltip("sinc(x) = sin(x)/x /; x ≠ 0, sinc(0) = 1.");
-
-                            if(ImGui::MenuItem("exp")) equation.append("exp");
-                            ImGui::SetItemTooltip("exp(x) = e^x");
 
                             if(ImGui::MenuItem("mix(")) equation.append("mix(min, max, f(x)");
                             ImGui::SetItemTooltip("Mixes args 1, 2, by a function between 0 and 1.");
@@ -1868,7 +1919,7 @@ int main(int, char**)
                                                     limits.X.Min,
                                                     limits.X.Max,
                                                     abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
-                                                    static_cast<size_t>(aroundTruthinessLeniencyFloat),
+                                                    (aroundTruthinessLeniencyFloat),
                                                     interpolateDiscontinuities,
                                                     followImplicitMultiplicationPriorityConvention};
                         lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
@@ -1903,7 +1954,7 @@ int main(int, char**)
 
                             if(updatePreviewGraph || !(prevLimits.X.Min == limits.X.Min && prevLimits.X.Max == limits.X.Max))
                             {
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*8,static_cast<size_t>(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*8,(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
                                 lessetB::mainLoop(graphOptions,true,false,previewNonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                                 liveGraphPoints.first=lessetB::globals::points.first;
                                 liveGraphPoints.second=lessetB::globals::points.second;
@@ -2025,7 +2076,7 @@ int main(int, char**)
                                                             limits.X.Min,
                                                             prevLimits.X.Min,
                                                             abs(dXMin)/(maxIndividualGraphPoints*dXMinScreenProportion/averagedPrecisionDivisor),
-                                                            static_cast<size_t>(aroundTruthinessLeniencyFloat),
+                                                            (aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
                                                             followImplicitMultiplicationPriorityConvention};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
@@ -2043,7 +2094,7 @@ int main(int, char**)
                                                             prevLimits.X.Max,
                                                             limits.X.Max,
                                                             abs(dXMax)/(maxIndividualGraphPoints/averagedPrecisionDivisor*dXMaxScreenProportion),
-                                                            static_cast<size_t>(aroundTruthinessLeniencyFloat),
+                                                            (aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
                                                             followImplicitMultiplicationPriorityConvention};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
@@ -2070,7 +2121,7 @@ int main(int, char**)
                                                         limits.X.Min,
                                                         limits.X.Max,
                                                         abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
-                                                        static_cast<size_t>(aroundTruthinessLeniencyFloat),
+                                                        (aroundTruthinessLeniencyFloat),
                                                         interpolateDiscontinuities,
                                                         followImplicitMultiplicationPriorityConvention};
                             lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
@@ -2093,7 +2144,7 @@ int main(int, char**)
                             for(size_t j{}; j<graphsEquations.size(); j++)
                             {
                                 nonEmptyGraphEquation=graphsEquations.at(j);
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,static_cast<size_t>(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.emplace_back(lessetB::globals::points.first);
