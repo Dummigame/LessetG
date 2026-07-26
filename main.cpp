@@ -1520,7 +1520,13 @@ int main(int, char**)
                               
                             if(ImGui::MenuItem("sum(")) equation.append("sum(expr, min, max)");
                             ImGui::SetItemTooltip("Like Σ. Argument 1 is an expression (which may contain n), Argument 2 is minimum n, Argument 3 is maximum n\nWarning: this function is comically slow.");
-                                                      
+
+                            if(ImGui::MenuItem("lgam")) equation.append("lgam");
+                            ImGui::SetItemTooltip("Lgamma.");
+
+                            if(ImGui::MenuItem("gam")) equation.append("gam");
+                            ImGui::SetItemTooltip("Gamma.");
+                                                                                  
                             ImGui::EndMenu();
                         }
 
@@ -1593,12 +1599,6 @@ int main(int, char**)
                             if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
                             ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
 
-                            if(ImGui::MenuItem("lgam")) equation.append("lgam");
-                            ImGui::SetItemTooltip("Lgamma.");
-
-                            if(ImGui::MenuItem("gam")) equation.append("gam");
-                            ImGui::SetItemTooltip("Gamma.");
-                            
                             if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
 
