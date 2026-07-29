@@ -77,7 +77,8 @@ bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &poin
 bool addIdentifier(Instance &data,const lessetB::Macro &newMacro);
 bool addIdentifier(Instance &data,const lessetB::Variable &newVariable);
 bool replaceMacros(std::string &equation, Instance &instance);
-
+int addClosingParentheses(std::string &equation);
+bool containsVariable(const std::string &equation);
 
 
 
@@ -700,10 +701,10 @@ int main(int, char**)
                                     }
 
 
-                                    if(scriptEquation.find("endif")==0)
+                                    if(scriptEquation.find("endIF")==0)
                                     {
                                         skip=false;
-                                        instances.at(selectedInstance).lastScriptOutput+="endif\n";
+                                        instances.at(selectedInstance).lastScriptOutput+="endIF\n";
                                         continue;
                                     }
 
@@ -776,7 +777,7 @@ int main(int, char**)
                                             continue;
                                         }
                                     }
-                                    if(scriptEquation.find("endif")==0 && conditionTrue)
+                                    if(scriptEquation.find("endIF")==0 && conditionTrue)
                                     {
                                         conditionTrue=false;
                                     }
@@ -823,10 +824,10 @@ int main(int, char**)
 
                                     if(!skip || conditionTrue==true)
                                     {
-                                        if(scriptEquation.find('x')<scriptEquation.find('#') && scriptEquation.find('x')!=std::string::npos)
-                                        {
-                                            scriptEquation.at(0)='#';
-                                        }
+                                        // if(scriptEquation.find('x')<scriptEquation.find('#') && scriptEquation.find('x')!=std::string::npos)
+                                        // {
+                                        //     scriptEquation.at(0)='#';
+                                        // }
                                         mainLoop(options, true, true, scriptEquation, nothing,instances.at(selectedInstance).lastScriptOutput,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true); // Lines with # are comments
                                     }
                                     if(calculationsFile.peek()=='\n') for(; calculationsFile.peek()=='\n'; calculationsFile.seekg(static_cast<size_t>(calculationsFile.tellg())+1));
@@ -1094,7 +1095,10 @@ int main(int, char**)
                         else updatePreviewGraph=false;
                         if(graphEquationPlusYEquals.find("y = ")==0) graphEquation=graphEquationPlusYEquals.substr(4);
                         else graphEquation=graphEquationPlusYEquals;
-                        if(ImGui::Button("Add"))
+
+                        int unclosedParentheses = addClosingParentheses(graphEquation);
+
+                        if(ImGui::Button("Add") && unclosedParentheses==0)
                         {
                             // If no graphs, don't try to check for duplicates, as you'd be unable to add the first graph due to the loop exiting.
                             for(int i{static_cast<int>(graphEquation.length()-1)}; i>0; i--)
@@ -1116,8 +1120,8 @@ int main(int, char**)
                                     recalculateGraphs=true;
                                 }
                             }
-                            
                         }
+                        if(unclosedParentheses<0) ImGui::SetItemTooltip("Found extra closing parentheses.");
                         ImGui::SameLine();
                         if(ImGui::Checkbox("Preview", &previewGraph))
                         {
@@ -1596,9 +1600,6 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Misc."))
                         {
-                            if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
-                            ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
-
                             if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
 
@@ -1622,9 +1623,12 @@ int main(int, char**)
 
                         ImGui::EndMenu();
                     }
-                    if(ImGui::BeginMenu("Comparisons and Logicals"))
+                    if(ImGui::BeginMenu("Logic"))
                     {
                         ImGui::MenuItem("false = 0, true = 1, if N≠0 => true",NULL,false,false);
+
+                        if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
+                        ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
 
                         if(ImGui::MenuItem("<")) equation.append("<");
                         ImGui::SetItemTooltip("Returns true if left less then right.");
@@ -1658,7 +1662,7 @@ int main(int, char**)
 
                         ImGui::EndMenu();
                     }
-                    if(ImGui::BeginMenu("Instances and Scripting"))
+                    if(ImGui::BeginMenu("Scripting"))
                     {
                         if(ImGui::BeginMenu("Instances"))
                         {
@@ -1689,7 +1693,7 @@ int main(int, char**)
 
                                 if(ImGui::BeginMenu("IF"))
                                 {
-                                    ImGui::Text("Run a block of commands only if an expression following 'IF' is true.\nEnd block with endif, no nested IF statements are supported.\nThis is not the same as if( in the calculator.");
+                                    ImGui::Text("Run a block of commands only if an expression following 'IF' is true.\nEnd block with endIF, no nested IF statements are supported.\nThis is not the same as if( in the calculator.");
                                     ImGui::EndMenu();
                                 }
 
@@ -1753,10 +1757,14 @@ int main(int, char**)
                 recalculateGraphs=true;
                 updatePreviewGraph=true;
             }
+
+            
             ImGui::SetNextItemWidth(io.DisplaySize.x/3);
             ImGui::InputText(" ",&equation);          // Call Lesset
-            if(equation!="") nonEmptyEquation=equation;
+            int unclosedParentheses = addClosingParentheses(equation);
+            if(unclosedParentheses<0) ImGui::SetItemTooltip("Found extra closing parentheses.");
             
+            if(equation!="") nonEmptyEquation=equation;
             std::string resultPlusEquals;
             if(equation!="") lastNonEmptyEquation=equation;
             else resultPlusEquals="";
@@ -1839,13 +1847,8 @@ int main(int, char**)
                     {
                         std::string graphEquationExpandedMacros = graphsEquations.at(i);
                         replaceMacros(graphEquationExpandedMacros, instances.at(selectedInstance));
-                        bool hasX{};
-                        if(graphEquationExpandedMacros.length()>=1 && graphEquationExpandedMacros.at(0)=='x') hasX=true;
-                        for(int i{}; i<graphEquationExpandedMacros.length() && !hasX; i++)
-                        {
-                            if(i==1 && graphEquationExpandedMacros.at(1)=='x' && graphEquationExpandedMacros.find("exp",0)!=0) hasX=true;
-                            if(i>1&&graphEquationExpandedMacros.at(i)=='x' && graphEquationExpandedMacros.find("mix",i-2)!=i-2 && graphEquationExpandedMacros.find("max",i-2)!=i-2 && graphEquationExpandedMacros.find("exp",i-1)!=i-1) hasX=true;
-                        }
+                        bool hasX = containsVariable(graphEquationExpandedMacros);
+
                         if(!hasX)
                         {
                             graphsEquations.erase(graphsEquations.begin()+i);
@@ -1937,13 +1940,7 @@ int main(int, char**)
                     {
                         std::string previewNonEmptyGraphEquation=graphEquation;
                         replaceMacros(previewNonEmptyGraphEquation, instances.at(selectedInstance));
-                        bool hasX{};
-                        for(int i{}; i<previewNonEmptyGraphEquation.length(); i++)
-                        {
-                            if(i==1 && previewNonEmptyGraphEquation.at(1)=='x' && previewNonEmptyGraphEquation.find("exp",0)!=0) hasX=true;
-                            if(i>1&&previewNonEmptyGraphEquation.at(i)=='x' && previewNonEmptyGraphEquation.find("mix",i-2)!=i-2 && previewNonEmptyGraphEquation.find("max",i-2)!=i-2 && previewNonEmptyGraphEquation.find("exp",i-1)!=i-1) hasX=true;
-                        }
-                        if(previewNonEmptyGraphEquation.at(0)=='x') hasX=true;
+                        bool hasX = containsVariable(previewNonEmptyGraphEquation);
 
                         if(hasX)
                         {                        
@@ -2342,6 +2339,36 @@ bool replaceMacros(std::string &equation, Instance &instance)
                 j=-1;
             }
         }
+    }
+    return false;
+}
+
+int addClosingParentheses(std::string &equation)
+{                
+    int unclosedParentheses{};
+    for(size_t i{}; i<equation.length(); i++)
+    {
+        if(equation.at(i)=='(') unclosedParentheses++;
+        else if(equation.at(i)==')') unclosedParentheses--;
+    }
+    if(unclosedParentheses>0)
+    {
+        while(unclosedParentheses>0)
+        {
+            equation.push_back(')');
+            unclosedParentheses--;
+        }
+    }
+    return unclosedParentheses;
+}
+
+bool containsVariable(const std::string &equation)
+{
+    if(equation.length()>=1 && equation.at(0)=='x') return true;
+    for(int i{}; i<equation.length(); i++)
+    {
+        if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) return true;
+        if(i>1&&equation.at(i)=='x' && equation.find("mix",i-2)!=i-2 && equation.find("max",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) return true;
     }
     return false;
 }

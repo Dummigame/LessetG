@@ -650,7 +650,7 @@ template <typename T = cpp_dec_float_100> T evaluateLeast(Token &arg, const T xV
 template <typename T = cpp_dec_float_100> T evaluateGcf(Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLcm(Token &arg, const T xValue);
 
-template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
+template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
 
 
 template <typename T> Point decimalToFraction(T enumerator);
@@ -763,8 +763,8 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         for(size_t i{}; i<equation.length(); i++)
         {
             if(equation.at(i)=='|') absValueLineCount++;
-            if(equation.at(i)=='(') parenthesesImbalance++;
-            else if(equation.at(i)==')') parenthesesImbalance--;
+            // if(equation.at(i)=='(') parenthesesImbalance++;
+            // else if(equation.at(i)==')') parenthesesImbalance--;
             if(parenthesesImbalance<0 || (equation.length()==i+1 && absValueLineCount%2!=0))
             {
                 result+="Parentheses are not balanced!";
@@ -1016,16 +1016,23 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         }
 
         // Check for fractions
-        if(!hasX && options.showFractions && isNumber(resultAsOSStream.str()) && !isKnownConstant && resultAsOSStream.str().find('e')==std::string::npos)
+        if(//!canDeclareIdentifiers && 
+           !hasX && 
+           options.showFractions && 
+           isNumber(resultAsOSStream.str()) && 
+           !isKnownConstant && 
+           resultAsOSStream.str().find('e')==std::string::npos)
         {
             Point frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
+            std::string currentResult=resultAsOSStream.str();
             resultAsOSStream.str("");
             resultAsOSStream<<frac.x<<'/'<<frac.y;
 
-            if(abs(frac.x)!=INFINITY && frac.y!=1 && 
-               resultAsOSStream.str().length()<12 && 
+            if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str()), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
+               // resultAsOSStream.str().length()<12 &&  // Lowk a bandaid to prevent it saying something stupid.
                equation!=resultAsOSStream.str() && 
-               std::fmod(frac.y,10)!=0) // Stops something like 3.307 -> 3307/1000
+               // std::fmod(frac.y,10)!=0 && // Stops something like 3.307 -> 3307/1000
+               frac.y!=1) 
             {
                 if(!passedCalculationsFile) result=resultAsOSStream.str();
                 else result+=equation+" = "+resultAsOSStream.str()+'\n';
@@ -1703,17 +1710,17 @@ template <typename T>
 T evaluateSum(Token &arg, const T xValue)
 {
     // expr, min, max
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults,3);
-    if(intermediateResults.size()<3) return NAN;
-    T sumVar{intermediateResults.at(1)};
-    const T sumMax{floor(intermediateResults.at(2))};
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals,3);
+    if(argVals.size()<3) return NAN;
+    T sumVar{argVals.at(1)};
+    const T sumMax{floor(argVals.at(2))};
     T result{};
     for(; sumVar<=sumMax; sumVar++)
     {
-        intermediateResults.clear();
-        evaluateArgs(arg,xValue,intermediateResults,1,sumVar);
-        result+=intermediateResults.at(0);
+        argVals.clear();
+        evaluateArgs(arg,xValue,argVals,1,sumVar);
+        result+=argVals.at(0);
     }
 
     
@@ -1726,13 +1733,13 @@ template <typename T>
 T evaluateMean(Token &arg, const T xValue)
 {
     T result{};
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults);   
-    for(size_t i{}; i<intermediateResults.size(); i++)
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals);   
+    for(size_t i{}; i<argVals.size(); i++)
     {
-        result+=intermediateResults.at(i);
+        result+=argVals.at(i);
     }
-    result=result/(intermediateResults.size());
+    result=result/(argVals.size());
 
     return result;
 }
@@ -1742,13 +1749,13 @@ T evaluateMean(Token &arg, const T xValue)
 template <typename T>
 T evaluateMedian(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults);
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals);
 
-    std::sort(intermediateResults.begin(), intermediateResults.end());
+    std::sort(argVals.begin(), argVals.end());
 
-    if(intermediateResults.size()%2!=0) return intermediateResults.at(intermediateResults.size()/2);
-    else return (intermediateResults.at(intermediateResults.size()/2-1)+intermediateResults.at(intermediateResults.size()/2))/2;
+    if(argVals.size()%2!=0) return argVals.at(argVals.size()/2);
+    else return (argVals.at(argVals.size()/2-1)+argVals.at(argVals.size()/2))/2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1756,29 +1763,29 @@ T evaluateMedian(Token &arg, const T xValue)
 template <typename T>
 T evaluateStdevp(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults);
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals);
 
-    std::sort(intermediateResults.begin()+1, intermediateResults.end());
+    std::sort(argVals.begin()+1, argVals.end());
 
-    if(intermediateResults.size()<2)
+    if(argVals.size()<2)
     {
         return 0;
     }
     T summedIntermediates{};
-    for(size_t i{}; i<intermediateResults.size(); i++)
+    for(size_t i{}; i<argVals.size(); i++)
     {
-        summedIntermediates+=intermediateResults.at(i);
+        summedIntermediates+=argVals.at(i);
     }
-    const T mean{summedIntermediates/intermediateResults.size()};
+    const T mean{summedIntermediates/argVals.size()};
     T summed{};
-    for(size_t i{}; i<intermediateResults.size(); i++)
+    for(size_t i{}; i<argVals.size(); i++)
     {
-        summed+=pow(intermediateResults.at(i)-mean,2);
+        summed+=pow(argVals.at(i)-mean,2);
     }
 
 
-    return sqrt(summed/intermediateResults.size()); // Intellegre
+    return sqrt(summed/argVals.size()); // Intellegre
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1787,42 +1794,42 @@ template <typename T>
 T evaluateLcm(Token &arg, const T xValue)
 {
     std::ostringstream numberAsOSStream;
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     T tempValue{};
     T numLeft{};
     T numRight{};
     std::string numberAsString;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,argVals);
     if(globals::options.graph)
     {
-        for(size_t i{}; i<intermediateResults.size(); i++) intermediateResults.at(i)=round(intermediateResults.at(i));
+        for(size_t i{}; i<argVals.size(); i++) argVals.at(i)=round(argVals.at(i));
     }
-    for(size_t i{}; i<intermediateResults.size(); i++)
+    for(size_t i{}; i<argVals.size(); i++)
     {
-        if(intermediateResults.at(i)<0) intermediateResults.at(i)=-intermediateResults.at(i);
+        if(argVals.at(i)<0) argVals.at(i)=-argVals.at(i);
     }
-    numLeft=intermediateResults.at(0); //a
-    numRight=intermediateResults.at(1); //b
-    while(intermediateResults.at(1)!=0)
+    numLeft=argVals.at(0); //a
+    numRight=argVals.at(1); //b
+    while(argVals.at(1)!=0)
     {
-        tempValue=intermediateResults.at(1); //b
-        intermediateResults.at(1)=boost::math::ccmath::fmod(intermediateResults.at(0),intermediateResults.at(1));
-        intermediateResults.at(0)=tempValue; 
+        tempValue=argVals.at(1); //b
+        argVals.at(1)=boost::math::ccmath::fmod(argVals.at(0),argVals.at(1));
+        argVals.at(0)=tempValue; 
     }
-    intermediateResults.at(0)=(numLeft*numRight)/intermediateResults.at(0);
-    intermediateResults.erase(intermediateResults.begin()+1);
-    if(intermediateResults.size()>=2)
+    argVals.at(0)=(numLeft*numRight)/argVals.at(0);
+    argVals.erase(argVals.begin()+1);
+    if(argVals.size()>=2)
     {
         numberAsOSStream<<"lcm(";
-        for(size_t i{}; i<intermediateResults.size(); i++)
+        for(size_t i{}; i<argVals.size(); i++)
         {
-            numberAsOSStream<<intermediateResults.at(i);
-            if(i!=intermediateResults.size()-1) numberAsOSStream<<',';
+            numberAsOSStream<<argVals.at(i);
+            if(i!=argVals.size()-1) numberAsOSStream<<',';
         }
         Token newArg{numberAsOSStream.str()};
-        intermediateResults.at(0) = evaluateLcm(newArg,xValue);
+        argVals.at(0) = evaluateLcm(newArg,xValue);
     }
-    return intermediateResults.at(0);
+    return argVals.at(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1831,39 +1838,39 @@ template <typename T>
 T evaluateGcf(Token &arg, const T xValue)
 {
     std::ostringstream numberAsOSStream;
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     T tempValue{};
     std::string numberAsString;
-    evaluateArgs(arg,xValue,intermediateResults);
+    evaluateArgs(arg,xValue,argVals);
     if(globals::options.graph)
     {
-        for(size_t i{}; i<intermediateResults.size(); i++) intermediateResults.at(i)=round(intermediateResults.at(i));
+        for(size_t i{}; i<argVals.size(); i++) argVals.at(i)=round(argVals.at(i));
     }
-    for(size_t i{}; i<intermediateResults.size(); i++)
+    for(size_t i{}; i<argVals.size(); i++)
     {
-        if(intermediateResults.at(i)<0) intermediateResults.at(i)=-intermediateResults.at(i);
+        if(argVals.at(i)<0) argVals.at(i)=-argVals.at(i);
     }
-    while(intermediateResults.size()>=2)
+    while(argVals.size()>=2)
     {
-        while(intermediateResults.at(1)!=0)
+        while(argVals.at(1)!=0)
         {
-            tempValue=intermediateResults.at(1);
-            intermediateResults.at(1)=boost::math::ccmath::fmod(intermediateResults.at(0),intermediateResults.at(1));
-            intermediateResults.at(0)=tempValue; 
+            tempValue=argVals.at(1);
+            argVals.at(1)=boost::math::ccmath::fmod(argVals.at(0),argVals.at(1));
+            argVals.at(0)=tempValue; 
         }
-        intermediateResults.erase(intermediateResults.begin()+1);
+        argVals.erase(argVals.begin()+1);
     }
-    return intermediateResults.at(0);
+    return argVals.at(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults, size_t argsToEval, T sumVar)
+void evaluateArgs(Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval, T sumVar)
 {
     std::string currentToken;
     int nestingLevel{};
-    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && intermediateResults.size()<argsToEval; i++)
+    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<argsToEval; i++)
     {
         if(arg.value().at(i)=='(') nestingLevel++;
         else if(arg.value().at(i)==')') nestingLevel--;
@@ -1871,11 +1878,11 @@ void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults
         if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
         else
         {
-            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
             currentToken.clear();
         }
     }
-    if(currentToken!="") intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
+    if(currentToken!="") argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1883,19 +1890,19 @@ void evaluateArgs(Token &arg, const T xValue, std::vector<T>&intermediateResults
 template <typename T = cpp_dec_float_100>
 T evaluateRndint(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
     int nestingLevel{};
-    evaluateArgs(arg, xValue, intermediateResults,2);
-    if(intermediateResults.size()==0) return 0;
-    if(intermediateResults.size()==1) return intermediateResults.at(0);
-    // std::cout<<"\nResults: "<<intermediateResults.at(0) << ',' << intermediateResults.at(1);
+    evaluateArgs(arg, xValue, argVals,2);
+    if(argVals.size()==0) return 0;
+    if(argVals.size()==1) return argVals.at(0);
+    // std::cout<<"\nResults: "<<argVals.at(0) << ',' << argVals.at(1);
 
-    if(intermediateResults.at(0)!=intermediateResults.at(0) || intermediateResults.at(1)!=intermediateResults.at(1)) return 0;
+    if(argVals.at(0)!=argVals.at(0) || argVals.at(1)!=argVals.at(1)) return 0;
 
-    if(round(intermediateResults.at(0)) > round(intermediateResults.at(1))) std::swap(intermediateResults.at(0), intermediateResults.at(1));
+    if(round(argVals.at(0)) > round(argVals.at(1))) std::swap(argVals.at(0), argVals.at(1));
 
-    std::uniform_int_distribution<> intDist(static_cast<int>(round(intermediateResults.at(0))),static_cast<int>(round(intermediateResults.at(1))));
+    std::uniform_int_distribution<> intDist(static_cast<int>(round(argVals.at(0))),static_cast<int>(round(argVals.at(1))));
     return intDist(randomMt);
 }
 
@@ -1904,10 +1911,10 @@ T evaluateRndint(Token &arg, const T xValue)
 template <typename T>
 T evaluateRndsel(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults);
-    std::uniform_int_distribution<size_t> intDist(0, intermediateResults.size()-1);
-    return intermediateResults.at(intDist(randomMt));
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals);
+    std::uniform_int_distribution<size_t> intDist(0, argVals.size()-1);
+    return argVals.at(intDist(randomMt));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1915,10 +1922,10 @@ T evaluateRndsel(Token &arg, const T xValue)
 template <typename T>
 T evaluateMax(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
-    evaluateArgs(arg,xValue,intermediateResults);
-    for(size_t i{}; i<intermediateResults.size(); i++) if(intermediateResults.at(i)>intermediateResults.at(0)) intermediateResults.at(0)=intermediateResults.at(i);
-    return intermediateResults.at(0);
+    std::vector<T> argVals;
+    evaluateArgs(arg,xValue,argVals);
+    for(size_t i{}; i<argVals.size(); i++) if(argVals.at(i)>argVals.at(0)) argVals.at(0)=argVals.at(i);
+    return argVals.at(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1926,12 +1933,12 @@ T evaluateMax(Token &arg, const T xValue)
 template <typename T>
 T evaluateDerive(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
     int nestingLevel{};
     T deriveStepSize = static_cast<T>(globals::options.xStep);
     if(deriveStepSize<0.05) deriveStepSize=0.05;
-    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && intermediateResults.size()<2; i++)
+    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<2; i++)
     {
         if(arg.value().at(i)=='(') nestingLevel++;
         else if(arg.value().at(i)==')') nestingLevel--;
@@ -1939,19 +1946,19 @@ T evaluateDerive(Token &arg, const T xValue)
         if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
         else
         {
-            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
-            intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
             currentToken.clear();
             break;
         }
     }
     if(currentToken!="")
     {
-        intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
-        intermediateResults.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
+        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
+        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
         currentToken.clear();  
     }
-    return (intermediateResults.at(0)-intermediateResults.at(1))/(deriveStepSize*2);
+    return (argVals.at(0)-argVals.at(1))/(deriveStepSize*2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1959,11 +1966,11 @@ T evaluateDerive(Token &arg, const T xValue)
 template <typename T>
 T evaluateMin(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults);
-    for(size_t i{}; i<intermediateResults.size(); i++) if(intermediateResults.at(i)<intermediateResults.at(0)) intermediateResults.at(0)=intermediateResults.at(i);
-    return intermediateResults.at(0);
+    evaluateArgs(arg,xValue,argVals);
+    for(size_t i{}; i<argVals.size(); i++) if(argVals.at(i)<argVals.at(0)) argVals.at(0)=argVals.at(i);
+    return argVals.at(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1971,18 +1978,18 @@ T evaluateMin(Token &arg, const T xValue)
 template <typename T>
 T evaluateSmax(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,3);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<2) return intermediateResults.at(0);
-    if(intermediateResults.size()==2) intermediateResults.push_back(0.5);
-    T maxArg = intermediateResults.at(0);
-    if(intermediateResults.at(1)>maxArg) maxArg=intermediateResults.at(1);
-    T enumerator = intermediateResults.at(2)-abs(intermediateResults.at(0)-intermediateResults.at(1));
+    evaluateArgs(arg,xValue,argVals,3);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()<2) return argVals.at(0);
+    if(argVals.size()==2) argVals.push_back(0.5);
+    T maxArg = argVals.at(0);
+    if(argVals.at(1)>maxArg) maxArg=argVals.at(1);
+    T enumerator = argVals.at(2)-abs(argVals.at(0)-argVals.at(1));
     if(0>enumerator) enumerator=0;
-    return maxArg+(pow(enumerator,2)/(4*intermediateResults.at(2)));
-    // return (intermediateResults.at(0)+intermediateResults.at(1)+sqrt(pow((intermediateResults.at(0)-intermediateResults.at(1)),2)+intermediateResults.at(2)))/2;
+    return maxArg+(pow(enumerator,2)/(4*argVals.at(2)));
+    // return (argVals.at(0)+argVals.at(1)+sqrt(pow((argVals.at(0)-argVals.at(1)),2)+argVals.at(2)))/2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1990,17 +1997,17 @@ T evaluateSmax(Token &arg, const T xValue)
 template <typename T>
 T evaluateSmin(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,3);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<2) return intermediateResults.at(0);
-    if(intermediateResults.size()==2) intermediateResults.push_back(0.5);
-    T min = intermediateResults.at(0);
-    if(intermediateResults.at(1)<min) min=intermediateResults.at(1);
-    T enumerator = intermediateResults.at(2)-abs(intermediateResults.at(0)-intermediateResults.at(1));
+    evaluateArgs(arg,xValue,argVals,3);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()<2) return argVals.at(0);
+    if(argVals.size()==2) argVals.push_back(0.5);
+    T min = argVals.at(0);
+    if(argVals.at(1)<min) min=argVals.at(1);
+    T enumerator = argVals.at(2)-abs(argVals.at(0)-argVals.at(1));
     if(0>enumerator) enumerator=0;
-    return min-(pow(enumerator,2)/(4*intermediateResults.at(2)));
+    return min-(pow(enumerator,2)/(4*argVals.at(2)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2008,15 +2015,15 @@ T evaluateSmin(Token &arg, const T xValue)
 template <typename T>
 T evaluateMix(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,3);
-    if(intermediateResults.size()==0) return NAN;
-    else if(intermediateResults.size()<2) return intermediateResults.at(0);
-    else if(intermediateResults.at(2)>=1) return intermediateResults.at(1);
-    else if(intermediateResults.at(2)<=0) return intermediateResults.at(0);
+    evaluateArgs(arg,xValue,argVals,3);
+    if(argVals.size()==0) return NAN;
+    else if(argVals.size()<2) return argVals.at(0);
+    else if(argVals.at(2)>=1) return argVals.at(1);
+    else if(argVals.at(2)<=0) return argVals.at(0);
     
-    else return intermediateResults.at(0)*(1-intermediateResults.at(2))+intermediateResults.at(1)*intermediateResults.at(2);
+    else return argVals.at(0)*(1-argVals.at(2))+argVals.at(1)*argVals.at(2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2024,14 +2031,14 @@ T evaluateMix(Token &arg, const T xValue)
 template <typename T>
 T evaluateSabs(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,2);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()<2) intermediateResults.emplace_back(0.1); // Default argument
-    T enumerator = intermediateResults.at(1)-abs(intermediateResults.at(0));
+    evaluateArgs(arg,xValue,argVals,2);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()<2) argVals.emplace_back(0.1); // Default argument
+    T enumerator = argVals.at(1)-abs(argVals.at(0));
     if(enumerator<0) enumerator=0;
-    return abs(intermediateResults.at(0))+(pow(enumerator,2)/(2*intermediateResults.at(1)));
+    return abs(argVals.at(0))+(pow(enumerator,2)/(2*argVals.at(1)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2039,52 +2046,51 @@ T evaluateSabs(Token &arg, const T xValue)
 template <typename T>
 T evaluateIf(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,3);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()==1) return !(!intermediateResults.at(0));
-    if(intermediateResults.size()==2)
+    evaluateArgs(arg,xValue,argVals,3);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()==1) return !(!argVals.at(0));
+    if(argVals.size()==2)
     {
-        if(intermediateResults.at(0)) return intermediateResults.at(1);
-        else return 0;
+        if(argVals.at(0)) return argVals.at(1);
+        else return NAN;
     }
     else 
     {
-        if(intermediateResults.at(0)) return intermediateResults.at(1);
-        else return intermediateResults.at(2);
+        if(argVals.at(0)) return argVals.at(1);
+        else return argVals.at(2);
     }
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 template <typename T>
 T evaluateRoot(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,2);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()==1) intermediateResults.emplace_back(2); // Default argument
+    evaluateArgs(arg,xValue,argVals,2);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()==1) argVals.emplace_back(2); // Default argument
 
-    // std::swap(intermediateResults.at(0),intermediateResults.at(1)); // My brain is too fried to change the code below. Don't kill me.
+    // std::swap(argVals.at(0),argVals.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
-    Point frac {decimalToFraction(intermediateResults.at(1))};
-    if(intermediateResults.at(0)==0) return NAN;
+    Point frac {decimalToFraction(argVals.at(1))};
+    if(argVals.at(0)==0) return NAN;
     if(abs(frac.x)!=INFINITY)
     {
-        if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && intermediateResults.at(0)<0)
+        if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && argVals.at(0)<0)
         {
-            return pow(-intermediateResults.at(0),1/intermediateResults.at(1));
+            return pow(-argVals.at(0),1/argVals.at(1));
         }
-        else if(fmod(frac.x,2)==1 && fmod(frac.y,2)==1 && intermediateResults.at(0)<0)
+        else if(fmod(frac.x,2)==1 && fmod(frac.y,2)==1 && argVals.at(0)<0)
         {
-            return -pow(-intermediateResults.at(0),1/intermediateResults.at(1));
+            return -pow(-argVals.at(0),1/argVals.at(1));
         }
     }
-    return pow(intermediateResults.at(0), 1/intermediateResults.at(1));
+    return pow(argVals.at(0), 1/argVals.at(1));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2092,12 +2098,12 @@ T evaluateRoot(Token &arg, const T xValue)
 template <typename T>
 T evaluateLog(Token &arg, const T xValue)
 {
-    std::vector<T> intermediateResults;
+    std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,intermediateResults,2);
-    if(intermediateResults.size()==0) return NAN;
-    if(intermediateResults.size()==1) intermediateResults.emplace(intermediateResults.begin(),10); // Default argument
-    return log(intermediateResults.at(1))/log(intermediateResults.at(0));
+    evaluateArgs(arg,xValue,argVals,2);
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()==1) argVals.emplace(argVals.begin(),10); // Default argument
+    return log(argVals.at(1))/log(argVals.at(0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2368,6 +2374,7 @@ Point decimalToFraction(T enumerator)
     std::string number;
     std::ostringstream asOSStream;
     asOSStream.precision(15);
+    if constexpr (std::is_same<T,cpp_dec_float_100>()) asOSStream.precision(15);
     asOSStream<<enumerator;
     number=asOSStream.str();
     T denominator{1};
@@ -2378,7 +2385,7 @@ Point decimalToFraction(T enumerator)
         denominator*=10;
     }
 
-
+    #warning Perhaps rewrite this pattern logic?
     size_t length = number.substr(number.find('.')+1).length()-1;
     bool hasTriedTwice{};
     retry:
