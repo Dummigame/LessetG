@@ -1,6 +1,3 @@
-
-#include <boost/multiprecision/fwd.hpp>
-#include <cmath>
 #ifdef LESSET
     #error "Only include lesset.hpp once."
 #endif
@@ -112,6 +109,13 @@ struct Point
     Point(float inX, float inY) : x(inX), y(inY){}
 };
 
+struct Frac
+{
+    float x{};
+    float y{};
+    Frac(float inX, float inY) : x(inX), y(inY){}
+};
+
 struct Options
 {
     bool graph{};
@@ -163,6 +167,10 @@ namespace globals
     inline std::vector<Macro> userMacros;
     inline std::pair<std::vector<double>,std::vector<double>> points; 
     inline std::string previousResult;
+    inline std::string errorMessage;
+    inline bool error{}; // 
+    inline bool passedCalculationsFile{};
+    inline bool passedInAsArg{};
 
     inline std::unordered_map<std::string, std::vector<Token>> tokenMemory;
     
@@ -463,7 +471,7 @@ class Token
     std::string tokenValue{};
 
     ///////////////////////////////////////////////
-    token_t determineType(std::string &value)
+    const token_t determineType(std::string &value)
     {
         if(isNumber(value)) return token_t::NUMBER;
 
@@ -558,7 +566,7 @@ class Token
         return "0";
     }
     ///////////////////////////////////////////////
-    static tokenCategory_t determineTokenCategory(token_t &type)
+    static tokenCategory_t determineTokenCategory(token_t &type) 
     {
         if(type==token_t::NUMBER || type==token_t::VARIABLE || type==token_t::CONSTANT || type==token_t::SUMVAR) return tokenCategory_t::NUMBER;
 
@@ -590,19 +598,11 @@ class Token
     }
     ///////////////////////////////////////////////
     template <typename T>
-    T number(T xValue=NAN)
+    T number(T xValue=NAN) const
     {
         if(xValue!=NAN && this->tokenType==token_t::VARIABLE)
         {
-            std::ostringstream asOSStream;
-            if constexpr(std::is_same<T,cpp_dec_float_100>()) asOSStream.precision(MAXOUTPUTPRECISION);
-            else if constexpr(std::is_same<T, long double>()) asOSStream.precision(17);
-            else if constexpr(std::is_same<T, double>()) asOSStream.precision(15);
-            else if constexpr(std::is_same<T, float>()) asOSStream.precision(6);
-            // else die
-            asOSStream << xValue;
-            this->tokenValue=asOSStream.str();
-            this->tokenType=token_t::NUMBER;
+            return xValue;
         }
 
         if(tokenValue=="rnd" || tokenValue=="rndint") return NAN;
@@ -612,15 +612,15 @@ class Token
         else return std::stold(tokenValue);
     }
     ///////////////////////////////////////////////
-    std::string value()
+    std::string value() const
     {
         return tokenValue;
     }  
-    token_t type()
+    token_t type() const
     {
         return tokenType;
     }
-    tokenCategory_t typeCategory()
+    tokenCategory_t typeCategory() const
     {
         return tokenCategory;
     }
@@ -628,35 +628,35 @@ class Token
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::vector<Token> getTokens(const std::string&, bool resetFirstRun=false);
-void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount=SIZE_MAX);
+void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount=1);
 void getVariableArgs(std::vector<Token>&, Options&);
 
 template <typename T = cpp_dec_float_100> T calculation(std::vector<Token>, const T xValue, T sumVar=NAN);
 std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber);
 
-template <typename T = cpp_dec_float_100> T evaluateAbs(Token &arg, const T xValue, const T sumVar);
-template <typename T = cpp_dec_float_100> T evaluateIf(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateLog(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateRoot(Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateAbs(const Token &arg, const T xValue, const T sumVar);
+template <typename T = cpp_dec_float_100> T evaluateIf(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateLog(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateRoot(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateMean(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateMedian(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateStdevp(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateRndsel(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateMax(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateLeast(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateGcf(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateLcm(const Token &arg, const T xValue);
+
 template <typename T = cpp_dec_float_100> T evaluateUnary(Token&, Token&, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateBinary(Token&, Token&, Token&, const T xValue);
 
-template <typename T = cpp_dec_float_100> T evaluateMean(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateMedian(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateStdevp(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateRndsel(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateMax(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateLeast(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateGcf(Token &arg, const T xValue);
-template <typename T = cpp_dec_float_100> T evaluateLcm(Token &arg, const T xValue);
-
-template <typename T> void evaluateArgs(Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
+template <typename T> bool evaluateArgs( const Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
 
 
-template <typename T> Point decimalToFraction(T enumerator);
+template <typename T> Frac decimalToFraction(T enumerator, size_t precision = 15);
 
-bool addIdentifier(Variable newVariable);
-bool addIdentifier(Macro newMacro);
+bool addIdentifier(const Variable &newVariable);
+bool addIdentifier(const Macro &newMacro);
 bool replaceMacros(std::string &equation);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -664,9 +664,11 @@ bool replaceMacros(std::string &equation);
 
 inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, std::string &equation, std::string &resultHistory, std::string &result, std::vector<Variable> &userVariables, std::vector<Macro> &userMacros, bool canDeclareIdentifiers=false)
 {
-
+    globals::error=false;
     globals::userVariables=userVariables;
     globals::userMacros=userMacros;
+    globals::passedInAsArg=passedInAsArg;
+    globals::passedCalculationsFile=passedCalculationsFile;
 
     globals::options=options;
     std::cout.precision(100);
@@ -767,7 +769,8 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             // else if(equation.at(i)==')') parenthesesImbalance--;
             if(parenthesesImbalance<0 || (equation.length()==i+1 && absValueLineCount%2!=0))
             {
-                result+="Parentheses are not balanced!";
+                globals::error=true;
+                result+="Absolute value parentheses not balanced\n";
                 equation.clear();
             }
         }
@@ -776,12 +779,30 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         
         if(equation.length()==0)
         {
-            result+="No valid input";
+            globals::error=true;
+            result+="No valid input\n";
             equation.clear();
             return false;
         }
         std::vector<Token> tokens = getTokens(equation);
+        if(globals::errorMessage!="" && !passedCalculationsFile)
+        {
+            globals::error=true;
+            result=globals::errorMessage;
+            globals::errorMessage.clear();
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+            equation.clear();
+            tokens.clear();
+            options.graph=false;
+            firstPass=false;
+            // globals::tokenMemory.clear();
+            getTokens("",true);
 
+            userMacros=globals::userMacros;
+            userVariables=globals::userVariables;    
+            return false;        
+        }
         // Add identifiers
         for(size_t i{}; i<tokens.size() && canDeclareIdentifiers; i++)
         {
@@ -791,9 +812,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 std::vector<Token> assignmentTokens;
                 bool invalidName{};
                 std::string identifierName{tokens.at(i).value().substr(3,tokens.at(i).value().length()-4)};
-                if(globals::constants.find(identifierName)!=globals::constants.end() ||
-                    tokens.at(i).value().find("variable")!=std::string::npos||
-                    tokens.at(i).value().find("macro")!=std::string::npos) invalidName=true;
+                if(globals::symbols.find(identifierName)!=globals::symbols.end() || identifierName=="h*") invalidName=true;
                 
                 if(invalidName)
                 {
@@ -806,7 +825,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 std::vector<Token> nameCheckTokens{getTokens(tokens.at(i).value().substr(3,tokens.at(i).value().length()-4))};
                 for(size_t h{}; h<nameCheckTokens.size(); h++)
                 {
-                    if(nameCheckTokens.at(h).type()==token_t::FUNCTION || nameCheckTokens.at(h).typeCategory()==tokenCategory_t::OPERATOR || nameCheckTokens.at(h).type()==token_t::NUMBER || nameCheckTokens.at(h).type()==token_t::VARIABLE)
+                    if(nameCheckTokens.at(h).type()==token_t::FUNCTION || (nameCheckTokens.at(h).typeCategory()==tokenCategory_t::OPERATOR && nameCheckTokens.at(h).value()!="h*") || nameCheckTokens.at(h).type()==token_t::NUMBER || nameCheckTokens.at(h).type()==token_t::VARIABLE)
                     {
                         result+="Forbidden name\n";
                         tokens.clear();
@@ -839,7 +858,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 if(!failed &&
                 resultAsOSStream.str().find("nan")==std::string::npos &&
                 identifierName!=resultAsOSStream.str()) result+="Assigned \"" + identifierName + "\" value " + resultAsOSStream.str()+'\n';
-                else result+="Forbidden name\n";
+                else result+="Forbidden name or NAN\n";
 
                 tokens.erase(tokens.begin()+i,tokens.begin()+j-i);
                 // globals::previousResult=resultAsOSStream.str();
@@ -926,8 +945,10 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             std::cout.precision(MAXOUTPUTPRECISION);
             resultAsOSStream.precision(MAXOUTPUTPRECISION);
             if(options.xStep==0)options.xStep=INFINITY;
+            size_t i{};
             for(cpp_dec_float_100 xValue=options.xMin; xValue<=options.xMax+0.000001; xValue+=options.xStep)
             {
+                i++;
                 std::ostringstream xValueAsOSStream;
                 if(xValue>(-0.00002) && xValue<0.00002) xValue=0;
                 xValueAsOSStream<<xValue;
@@ -938,11 +959,9 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, xValue);
                 if(resultAsOSStream.str().find("nan")!=std::string::npos)
                 {
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
-                    continue;
+                    resultAsOSStream.str("Not a Number");
                 }
-                else if(resultAsOSStream.str()=="-0")
+                if(resultAsOSStream.str()=="-0")
                 {
                     resultAsOSStream.str("");
                     resultAsOSStream.clear();       
@@ -966,7 +985,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                         else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
                     }
                 }
-                result+="For x = " + xValueAsOSStream.str() + ": " + resultAsOSStream.str()+'\n';
+                result+=std::to_string(i)+": (" + xValueAsOSStream.str() + " ;" + resultAsOSStream.str()+")\n";
                 resultAsOSStream.str("");
                 resultAsOSStream.clear();
             }
@@ -999,8 +1018,16 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             }    
         }
 
-        // Show results equal to a constant as that constant
         bool isKnownConstant{};
+        if(globals::errorMessage!="" && !passedCalculationsFile)
+        {
+            globals::error=true;
+            result=globals::errorMessage;
+            globals::errorMessage.clear();
+            goto cleanup;
+        }
+        // Show results equal to a constant as that constant
+        
         if(!hasX && options.showFractions && globals::valueToConstants.find(resultAsOSStream.str())!=globals::valueToConstants.end())
         {
             if(equation!=globals::valueToConstants.find(resultAsOSStream.str())->second)
@@ -1012,21 +1039,30 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 }
                 isKnownConstant=true;
             }
-
         }
 
         // Check for fractions
-        if(//!canDeclareIdentifiers && 
-           !hasX && 
+        if(!hasX && 
            options.showFractions && 
            isNumber(resultAsOSStream.str()) && 
            !isKnownConstant && 
            resultAsOSStream.str().find('e')==std::string::npos)
         {
-            Point frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
+            Frac frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
+            
             std::string currentResult=resultAsOSStream.str();
             resultAsOSStream.str("");
             resultAsOSStream<<frac.x<<'/'<<frac.y;
+
+            // Just try a couple times with more and more decimal places and see if the funny spits out a reasonable fraction lmao
+            for(size_t i{10}; 
+                (abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str()), NAN) - static_cast<cpp_dec_float_100>(currentResult)) >= cpp_dec_float_100(0.000000000000000000000000000000001) || frac.x==INFINITY) && 
+                i<=20; i++)
+            {
+                frac = decimalToFraction(static_cast<cpp_dec_float_100>(currentResult),i);
+                resultAsOSStream.str("");
+                resultAsOSStream<<frac.x<<'/'<<frac.y;
+            }
 
             if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str()), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
                // resultAsOSStream.str().length()<12 &&  // Lowk a bandaid to prevent it saying something stupid.
@@ -1066,7 +1102,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
 inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
 {
-    if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<double>(globals::options.xStep)*5;
+    //if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<double>(globals::options.xStep);
     std::vector<Point> points;
     for(;xValue<xValueMax; xValue+=static_cast<double>(globals::options.xStep))
     {
@@ -1101,40 +1137,43 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
 
     for(; i<input.length(); i++)
     {
-        if(currentToken=="" && input.find(functionName, i)==i) for(; i<input.length(); i++)
-        {
-            if(!inFunctionCall)
+        if(currentToken=="" && input.find(functionName, i)==i) 
+            for(; i<input.length(); i++)
             {
-                currentToken.append(functionName);
-                i+=functionNameLength;
-                inFunctionCall=true;
-                if(i==input.length()-1) continue;
-            }
-            if(input.at(i)==',' && nestingLevel==1) argFound++;
-            if(argFound>argCount)
-            {
-                for(; i<input.length() && nestingLevel>0; i++)
+                if(!inFunctionCall)
                 {
-                    if(input.at(i)==')') nestingLevel--;
-                    else if(input.at(i)=='(') nestingLevel++;                    
+                    currentToken.append(functionName);
+                    i+=functionNameLength;
+                    inFunctionCall=true;
+                    if(i==input.length()-1) continue;
                 }
-                break;
+                if(i<input.length()-1 && input.at(i)==',' && nestingLevel==1 && input.at(i+1)!=')') argFound++;
+
+                if((i<input.length()-1 && nestingLevel==0 && input.at(i)=='(' && input.at(i+1)==')') || 
+                   (i==input.length()-1 && nestingLevel==0 && input.at(i)=='(')) argFound=0; // No arguments
+                   
+                if(input.at(i)==')') nestingLevel--;
+                else if(input.at(i)=='(') nestingLevel++;
+                currentToken.push_back(input.at(i));
+                // if((i==input.length()-2 && input.at(i)==',' && input.at(i+1)==')') || (input.at(i-1)==',' && input.at(i)==',') || (nestingLevel==0 && input.at(i-1)==',')) //Check for some bad argument cases
+                // {
+                //     currentToken.clear();
+                //     continue;
+                // }
+                if(nestingLevel==0 || i==input.length()-1)
+                {
+                    if(argCount>argFound && !globals::passedCalculationsFile)
+                    {
+                        globals::errorMessage+="Too few arguments for function \"";
+                        globals::errorMessage+=functionName;
+                        globals::errorMessage+="\" (Expected at least "+ std::to_string(argCount) + ", found " + std::to_string(argFound) + ")\n";
+                        globals::error=true;
+                    }
+                    tokens.emplace_back(currentToken);
+                    i+=initialI;
+                    return;
+                }
             }
-            if(input.at(i)==')') nestingLevel--;
-            else if(input.at(i)=='(') nestingLevel++;
-            currentToken.push_back(input.at(i));
-            if((i==input.length()-2 && input.at(i)==',' && input.at(i+1)==')') || (input.at(i-1)==',' && input.at(i)==',') || (nestingLevel==0 && input.at(i-1)==',')) //Check for some bad argument cases
-            {
-                currentToken.clear();
-                continue;
-            }
-            if(nestingLevel==0 || i==input.length()-1)
-            {
-                tokens.emplace_back(currentToken);
-                i+=initialI;
-                return;
-            }
-        }
     }
     i+=initialI;
     return;
@@ -1142,6 +1181,7 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Pretty much a lexer.
 inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
 {
     std::ostringstream resultAsOSStream;
@@ -1159,7 +1199,6 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     }
     int nestingLevel{};
     int absNestingLevel{};
-    int nestingOfFunction{};
     uint startOfFunction{};
     std::vector<Token> tokens{};
     
@@ -1170,7 +1209,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     for(size_t i{}; i<input.length(); i++)
     {
         // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.
-        if(currentToken=="" && input.at(i)=='|') for(startOfFunction=i; i<input.length(); i++)
+        if(input.at(i)=='|') for(startOfFunction=i; i<input.length(); i++)
         {
             if(!inFunctionCall)
             {
@@ -1181,20 +1220,17 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
                     currentToken.push_back('|');
                 }
                 inFunctionCall=true;
-                nestingOfFunction=nestingLevel;
-                if(i>=input.length()-1) break;
+                if(i>=input.length()-1)
+                {
+                    globals::errorMessage+="Bad absolute value parentheses\n";
+                    globals::error=true;
+                    break;
+                }
             }
-            if(input.at(i)==')')
-            {
-                nestingLevel--;
-                nestingLevel--;
-            }
-            else if(input.at(i)=='(')
-            {
-                nestingLevel++;
-                nestingLevel++;
-            }
-            if(i<input.length() && nestingLevel==false && input.at(i)=='|') absNestingLevel--;
+            if(input.at(i)==')') nestingLevel--;
+            else if(input.at(i)=='(') nestingLevel++;
+
+            if(i<input.length() && nestingLevel==0 && input.at(i)=='|') absNestingLevel--;
             if(i>startOfFunction+1 && nestingLevel<=0 && absNestingLevel==0 && nestingLevel==false && input.at(i)=='|' || 
                (i==input.length()-1 && input.at(i)=='|')) 
             {
@@ -1217,18 +1253,18 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall);
         else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall);
         else if(!inFunctionCall && input.find("gcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcf",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("hcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcf",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("hcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcd",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("gcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcd",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("hcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcf",i,inFunctionCall); // Alias
+        else if(!inFunctionCall && input.find("hcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcd",i,inFunctionCall); // Alias
+        else if(!inFunctionCall && input.find("gcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcd",i,inFunctionCall); // Alias
         else if(!inFunctionCall && input.find("mix(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mix",i,inFunctionCall);
         else if(!inFunctionCall && input.find("lcm(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"lcm",i,inFunctionCall);
         else if(!inFunctionCall && input.find("min(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"min",i,inFunctionCall);
         else if(!inFunctionCall && input.find("rndsel(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndsel",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall,2);
         else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall);
         else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall,2);
+        else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall,3);
 
         // Parse Subexpression
         if(currentToken=="" && !inFunctionCall && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1350,12 +1386,12 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
                 tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3x -> 3 h* x
-        if((tokens.at(i).type()==token_t::VARIABLE || tokens.at(i).type()==token_t::CONSTANT) &&
+        if((tokens.at(i).type()==token_t::VARIABLE || tokens.at(i).type()==token_t::CONSTANT || tokens.at(i).type()==token_t::SUMVAR) &&
             tokens.at(i-1).typeCategory()==tokenCategory_t::NUMBER) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: x3 -> x h* 3
         if(tokens.at(i).typeCategory()==tokenCategory_t::NUMBER &&
-        (tokens.at(i-1).type()==token_t::VARIABLE || tokens.at(i-1).type()==token_t::CONSTANT)) tokens.emplace(tokens.begin()+i++, Token("h*"));
+        (tokens.at(i-1).type()==token_t::VARIABLE || tokens.at(i-1).type()==token_t::CONSTANT || tokens.at(i-1).type()==token_t::SUMVAR)) tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3sin x -> 3 h* sinx
         if(tokens.at(i).type()==token_t::FUNCTION &&
@@ -1407,7 +1443,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     }
 
 
-    globals::tokenMemory.emplace(input,tokens);
+    if(globals::errorMessage=="") globals::tokenMemory.emplace(input,tokens);
     return tokens;
 }
 
@@ -1457,9 +1493,9 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
     if(tokens.size()==1 && tokens.at(0).type()==token_t::INVALID) return NAN;
     size_t pass{};
     size_t failedPass{LOGICALS};
-    for(; pass<=LOGICALS; pass++)
+    for(; pass<=LOGICALS && globals::errorMessage==""; pass++)
     {
-        for(int i{}; i<tokens.size(); i++)
+        for(int i{}; i<tokens.size() && globals::errorMessage==""; i++) // Stop trying when error found
         {
             if(pass==SUBEXPRESSIONS)
             {
@@ -1517,7 +1553,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                     if(i-2<tokens.size())
                     {
                         // Account for something like x^-1
-                        if((tokens.at(i-2).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i-1).value()=="-" && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                        if((tokens.at(i-2).value()=="^" || tokens.at(i-2).value()=="**") && tokens.at(i-1).value()=="-" && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                         {
                             T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
                             resultAsOSStream << evaluatedUnary;
@@ -1693,13 +1729,42 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
         if(tokens.size()==1 && (tokens.at(0).type()==token_t::NUMBER|| tokens.at(0).type()==token_t::CONSTANT)) return static_cast<cpp_dec_float_100>(tokens.at(0).value());
     }
     if(tokens.size()==1 && (tokens.at(0).type()==token_t::NUMBER|| tokens.at(0).type()==token_t::CONSTANT)) return std::stold(tokens.at(0).value());
+    
+
+    if(globals::errorMessage=="" && !globals::passedCalculationsFile) globals::errorMessage+="Malformed expression\n";
+    globals::error=true;
     return NAN;
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+bool evaluateArgs( const Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval, T sumVar)
+{
+    if(globals::error) return true;
+    std::string currentToken;
+    int nestingLevel{};
+    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<argsToEval; i++)
+    {
+        if(globals::error) return true;
+        if(arg.value().at(i)=='(') nestingLevel++;
+        else if(arg.value().at(i)==')') nestingLevel--;
+        if(nestingLevel<0) break;
+        if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
+        else
+        {
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
+            currentToken.clear();
+        }
+    }
+    if(currentToken!="") argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
+    if(globals::error) return true;
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateAbs(Token &arg, const T xValue, const T sumVar)
+T evaluateAbs( const Token &arg, const T xValue, const T sumVar)
 {
     return abs(calculation<T>(getTokens(arg.value()), xValue,sumVar));
 }
@@ -1707,11 +1772,11 @@ T evaluateAbs(Token &arg, const T xValue, const T sumVar)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateSum(Token &arg, const T xValue)
+T evaluateSum( const Token &arg, const T xValue)
 {
     // expr, min, max
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals,3);
+    if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()<3) return NAN;
     T sumVar{argVals.at(1)};
     const T sumMax{floor(argVals.at(2))};
@@ -1719,7 +1784,8 @@ T evaluateSum(Token &arg, const T xValue)
     for(; sumVar<=sumMax; sumVar++)
     {
         argVals.clear();
-        evaluateArgs(arg,xValue,argVals,1,sumVar);
+        if(evaluateArgs(arg,xValue,argVals,1,sumVar)) return NAN;
+        if(globals::error) return NAN;
         result+=argVals.at(0);
     }
 
@@ -1730,11 +1796,11 @@ T evaluateSum(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateMean(Token &arg, const T xValue)
+T evaluateMean( const Token &arg, const T xValue)
 {
     T result{};
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals);   
+    if(evaluateArgs(arg, xValue, argVals)) return NAN; 
     for(size_t i{}; i<argVals.size(); i++)
     {
         result+=argVals.at(i);
@@ -1747,10 +1813,10 @@ T evaluateMean(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateMedian(Token &arg, const T xValue)
+T evaluateMedian( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
 
     std::sort(argVals.begin(), argVals.end());
 
@@ -1761,10 +1827,10 @@ T evaluateMedian(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateStdevp(Token &arg, const T xValue)
+T evaluateStdevp( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
 
     std::sort(argVals.begin()+1, argVals.end());
 
@@ -1791,7 +1857,7 @@ T evaluateStdevp(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateLcm(Token &arg, const T xValue)
+T evaluateLcm( const Token &arg, const T xValue)
 {
     std::ostringstream numberAsOSStream;
     std::vector<T> argVals;
@@ -1799,7 +1865,7 @@ T evaluateLcm(Token &arg, const T xValue)
     T numLeft{};
     T numRight{};
     std::string numberAsString;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
     if(globals::options.graph)
     {
         for(size_t i{}; i<argVals.size(); i++) argVals.at(i)=round(argVals.at(i));
@@ -1835,13 +1901,13 @@ T evaluateLcm(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateGcf(Token &arg, const T xValue)
+T evaluateGcf( const Token &arg, const T xValue)
 {
     std::ostringstream numberAsOSStream;
     std::vector<T> argVals;
     T tempValue{};
     std::string numberAsString;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
     if(globals::options.graph)
     {
         for(size_t i{}; i<argVals.size(); i++) argVals.at(i)=round(argVals.at(i));
@@ -1865,35 +1931,13 @@ T evaluateGcf(Token &arg, const T xValue)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-void evaluateArgs(Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval, T sumVar)
-{
-    std::string currentToken;
-    int nestingLevel{};
-    for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<argsToEval; i++)
-    {
-        if(arg.value().at(i)=='(') nestingLevel++;
-        else if(arg.value().at(i)==')') nestingLevel--;
-        if(nestingLevel<0) break;
-        if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
-        else
-        {
-            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
-            currentToken.clear();
-        }
-    }
-    if(currentToken!="") argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue, sumVar));
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 template <typename T = cpp_dec_float_100>
-T evaluateRndint(Token &arg, const T xValue)
+T evaluateRndint( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
     int nestingLevel{};
-    evaluateArgs(arg, xValue, argVals,2);
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
     if(argVals.size()==0) return 0;
     if(argVals.size()==1) return argVals.at(0);
     // std::cout<<"\nResults: "<<argVals.at(0) << ',' << argVals.at(1);
@@ -1909,10 +1953,10 @@ T evaluateRndint(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateRndsel(Token &arg, const T xValue)
+T evaluateRndsel( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
     std::uniform_int_distribution<size_t> intDist(0, argVals.size()-1);
     return argVals.at(intDist(randomMt));
 }
@@ -1920,10 +1964,10 @@ T evaluateRndsel(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateMax(Token &arg, const T xValue)
+T evaluateMax( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
     for(size_t i{}; i<argVals.size(); i++) if(argVals.at(i)>argVals.at(0)) argVals.at(0)=argVals.at(i);
     return argVals.at(0);
 }
@@ -1931,7 +1975,7 @@ T evaluateMax(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateDerive(Token &arg, const T xValue)
+T evaluateDerive( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
@@ -1940,6 +1984,7 @@ T evaluateDerive(Token &arg, const T xValue)
     if(deriveStepSize<0.05) deriveStepSize=0.05;
     for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<2; i++)
     {
+        if(globals::error) return NAN;
         if(arg.value().at(i)=='(') nestingLevel++;
         else if(arg.value().at(i)==')') nestingLevel--;
         if(nestingLevel<0) break;
@@ -1964,11 +2009,11 @@ T evaluateDerive(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateMin(Token &arg, const T xValue)
+T evaluateMin( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals);
+    if(evaluateArgs(arg, xValue, argVals)) return NAN;
     for(size_t i{}; i<argVals.size(); i++) if(argVals.at(i)<argVals.at(0)) argVals.at(0)=argVals.at(i);
     return argVals.at(0);
 }
@@ -1976,11 +2021,11 @@ T evaluateMin(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateSmax(Token &arg, const T xValue)
+T evaluateSmax( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,3);
+    if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()<2) return argVals.at(0);
     if(argVals.size()==2) argVals.push_back(0.5);
@@ -1995,11 +2040,11 @@ T evaluateSmax(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateSmin(Token &arg, const T xValue)
+T evaluateSmin( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,3);
+    if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()<2) return argVals.at(0);
     if(argVals.size()==2) argVals.push_back(0.5);
@@ -2013,11 +2058,11 @@ T evaluateSmin(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateMix(Token &arg, const T xValue)
+T evaluateMix( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,3);
+    if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()==0) return NAN;
     else if(argVals.size()<2) return argVals.at(0);
     else if(argVals.at(2)>=1) return argVals.at(1);
@@ -2029,11 +2074,11 @@ T evaluateMix(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateSabs(Token &arg, const T xValue)
+T evaluateSabs( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,2);
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()<2) argVals.emplace_back(0.1); // Default argument
     T enumerator = argVals.at(1)-abs(argVals.at(0));
@@ -2044,11 +2089,11 @@ T evaluateSabs(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateIf(Token &arg, const T xValue)
+T evaluateIf( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,3);
+    if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()==1) return !(!argVals.at(0));
     if(argVals.size()==2)
@@ -2067,17 +2112,17 @@ T evaluateIf(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateRoot(Token &arg, const T xValue)
+T evaluateRoot( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,2);
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()==1) argVals.emplace_back(2); // Default argument
 
     // std::swap(argVals.at(0),argVals.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
-    Point frac {decimalToFraction(argVals.at(1))};
+    Frac frac {decimalToFraction(argVals.at(1))};
     if(argVals.at(0)==0) return NAN;
     if(abs(frac.x)!=INFINITY)
     {
@@ -2096,11 +2141,11 @@ T evaluateRoot(Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateLog(Token &arg, const T xValue)
+T evaluateLog( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
-    evaluateArgs(arg,xValue,argVals,2);
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()==1) argVals.emplace(argVals.begin(),10); // Default argument
     return log(argVals.at(1))/log(argVals.at(0));
@@ -2111,6 +2156,7 @@ T evaluateLog(Token &arg, const T xValue)
 template <typename T>
 T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringRight, const T xValue)
 {
+    if(globals::error) return NAN;
     T numberLeft{numberStringLeft.number(xValue)};
     T numberRight{numberStringRight.number(xValue)};
 
@@ -2128,13 +2174,13 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
     
 
     if(operation.value()=="+") return numberLeft+numberRight;
-    else if(operation.value()=="h*") return numberLeft*numberRight;
-    else if(operation.value()=="*") return numberLeft*numberRight;
+    else if(operation.value()=="*" || operation.value()=="h*") return numberLeft*numberRight;
     else if(operation.value()=="/") return numberLeft/numberRight;
     else if(operation.value()=="^" || operation.value()=="**") 
     {
-        Point frac {decimalToFraction(numberRight)};
-        if(abs(frac.x)!=INFINITY)
+        Frac frac {decimalToFraction(numberRight)};
+        std::string fractionAsString = std::to_string(frac.x) + '/' + std::to_string(frac.y);
+        if(abs(frac.x)!=INFINITY && abs(calculation(getTokens(fractionAsString), xValue) - numberRight) < 0.0000000001)
         {
             if(fmod(frac.y,2)==1 && fmod(frac.x,2)==0 && numberLeft<0)
             {
@@ -2159,6 +2205,7 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
 template <typename T>
 T evaluateUnary(Token &numberString, Token &operation, const T xValue)
 {
+    if(globals::error) return NAN;
     T number=numberString.number(xValue);
     T result{1};
     Token e{"e"};
@@ -2288,6 +2335,8 @@ inline bool isNumber(const std::string &input)
     if(input=="-inf") return true;
     if(input=="nan") return true;
     if(input=="-nan") return true;
+    if(input=="e") return false;
+    if(input=="-") return false;
     for(size_t i{}; i<input.length(); i++) if((input.at(i)<'0' || input.at(i)>'9') && 
                                                input.at(i)!='e' && 
                                                input.at(i)!='.' &&
@@ -2297,9 +2346,6 @@ inline bool isNumber(const std::string &input)
     uint eCount{};
     bool seenMinus{};
 
-
-    if(input=="e") return false;
-    if(input=="-") return false;
     for(size_t i{}; i<input.length(); i++)
     {
         if((seenMinus && input.at(i)=='-')||(i>0 && input.at(i)=='-' && input.at(i-1)!='e')) return false;
@@ -2316,8 +2362,18 @@ inline bool isNumber(const std::string &input)
         if(input.at(i)=='.')
         {
             dotCount++;
-            if(eCount) return false;
-            if(dotCount>1) return false;
+            if(eCount) 
+            {
+                if(!globals::passedCalculationsFile) globals::errorMessage+="Number \"" + input + "\" can only have an integer exponent\n";
+                globals::error=true;
+                return false;
+            }
+            if(dotCount>1)
+            {
+                if(!globals::passedCalculationsFile) globals::errorMessage+="Number \"" + input + "\" has multiple decimal points\n";
+                globals::error=true;
+                return false;
+            }
         }
         if(eCount>1) return false;
 
@@ -2368,39 +2424,40 @@ inline long long unguardedGcd(long long a, long long b)
 }
 
 template <typename T>
-Point decimalToFraction(T enumerator)
+Frac decimalToFraction(T enumerator, size_t precision)
 {
+    const bool negative{enumerator<0};
+    if(negative) enumerator=-enumerator;
     std::string fraction;
     std::string number;
     std::ostringstream asOSStream;
     asOSStream.precision(15);
-    if constexpr (std::is_same<T,cpp_dec_float_100>()) asOSStream.precision(15);
+    if constexpr (std::is_same<T,cpp_dec_float_100>()) asOSStream.precision(precision);
     asOSStream<<enumerator;
     number=asOSStream.str();
     T denominator{1};
 
-    for(size_t i{}; enumerator!=round(enumerator); i++)
+    for(size_t i{}; enumerator!=round(enumerator) && enumerator==enumerator; i++)
     {
         enumerator*=10;
         denominator*=10;
     }
 
-    #warning Perhaps rewrite this pattern logic?
     size_t length = number.substr(number.find('.')+1).length()-1;
     bool hasTriedTwice{};
     retry:
     std::string pattern=number.substr(number.find('.')+1,length/2.f);
-    size_t patternInstancesFound{};
+    size_t occurences{};
     for(size_t i{number.find('.')+1}; i<number.length() && pattern!="" && length>=12; i++)
     {
         if(number.find(pattern,i)==i)
         {
-            patternInstancesFound++;
+            occurences++;
             i+=pattern.length()-1;
         }
     }
     // std::cout<<patternInstancesFound<<std::endl;
-    if(patternInstancesFound<=1 && length>=12 && !hasTriedTwice)
+    if(occurences<=1 && length>=12 && !hasTriedTwice)
     {
         length-=1;
         hasTriedTwice=true;
@@ -2408,7 +2465,7 @@ Point decimalToFraction(T enumerator)
     }
 
     
-    if(patternInstancesFound>1)
+    if(occurences>1)
     {
         if constexpr (std::is_same<double, T>()) 
         {
@@ -2426,18 +2483,20 @@ Point decimalToFraction(T enumerator)
     enumerator/=gcd;
     denominator/=gcd;
 
-    return Point(static_cast<double>(enumerator),static_cast<double>(denominator));
+    if(negative) enumerator=-enumerator;
+
+    return Frac(static_cast<double>(enumerator),static_cast<double>(denominator));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline bool addIdentifier(Variable newVariable)
+inline bool addIdentifier(const Variable &newVariable)
 {
     for(size_t i{}; i<globals::userMacros.size(); i++)
     {
         if(newVariable.name==globals::userMacros.at(i).name) 
         {
-            std::cerr<<"Duplicate names are not permissible.\n\n";
+            std::cerr<<"Duplicate names are not permitted.\n\n";
             return true;
         }
     }
@@ -2455,13 +2514,13 @@ inline bool addIdentifier(Variable newVariable)
     return false;
 }
 
-inline bool addIdentifier(Macro newMacro)
+inline bool addIdentifier(const Macro &newMacro)
 {
     for(size_t i{}; i<globals::userVariables.size(); i++)
     {
         if(newMacro.name==globals::userVariables.at(i).name) 
         {
-            std::cerr<<"\nDuplicate names are not permissible.\n";
+            std::cerr<<"\nDuplicate names are not permitted.\n";
             return true;
         }
     }

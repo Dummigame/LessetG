@@ -807,6 +807,7 @@ int main(int, char**)
                                             else jumpDestination=round(std::stold(jumpValue.substr(subEquationLength+2)));
 
                                             calculationsFile.seekg(std::ios::beg);
+                                            if(jumpDestination<1) jumpDestination=1;
                                             for(size_t i{}; i<jumpDestination-1; i++)
                                             {
                                                 calculationsFile.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
@@ -1390,13 +1391,13 @@ int main(int, char**)
                             if(ImGui::MenuItem("∜")) equation.append("∜");
                             ImGui::SetItemTooltip("Quartic root (qtrt) function.");
 
-                            if(ImGui::MenuItem("root(")) equation.append("root(enumerator,denominator)");
+                            if(ImGui::MenuItem("root()")) equation.append("root(enumerator,denominator)");
                             ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
            
                             if(ImGui::MenuItem("ln")) equation.append("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
 
-                            if(ImGui::MenuItem("log(")) equation.append("log(base,value)");
+                            if(ImGui::MenuItem("log()")) equation.append("log(base,value)");
                             ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
 
                             if(ImGui::MenuItem("abs")) equation.append("abs");
@@ -1516,13 +1517,13 @@ int main(int, char**)
                             if(ImGui::MenuItem("ln")) equation.append("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
 
-                            if(ImGui::MenuItem("log(")) equation.append("log(base,value)");
+                            if(ImGui::MenuItem("log()")) equation.append("log(base,value)");
                             ImGui::SetItemTooltip("Generic log function, base on the left, expression right.\nMay be called with one argument for log10(expr).");
 
-                            if(ImGui::MenuItem("derive(")) equation.append("derive(");
+                            if(ImGui::MenuItem("derive()")) equation.append("derive(");
                             ImGui::SetItemTooltip("Approximates a derivative. Takes one argument.");
                               
-                            if(ImGui::MenuItem("sum(")) equation.append("sum(expr, min, max)");
+                            if(ImGui::MenuItem("sum()")) equation.append("sum(expr, min, max)");
                             ImGui::SetItemTooltip("Like Σ. Argument 1 is an expression (which may contain n), Argument 2 is minimum n, Argument 3 is maximum n\nWarning: this function is comically slow.");
 
                             if(ImGui::MenuItem("lgam")) equation.append("lgam");
@@ -1536,7 +1537,7 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Number Theory"))
                         {
-                            if(ImGui::MenuItem("root(")) equation.append("root(enumerator,denominator)");
+                            if(ImGui::MenuItem("root()")) equation.append("root(enumerator,denominator)");
                             ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
               
                             if(ImGui::MenuItem("round")) equation.append("round");
@@ -1551,16 +1552,16 @@ int main(int, char**)
                             if(ImGui::MenuItem("abs")) equation.append("abs");
                             ImGui::SetItemTooltip("Absolute value as a function.");
 
-                            if(ImGui::MenuItem("sabs(")) equation.append("sabs(x,λ)");
+                            if(ImGui::MenuItem("sabs()")) equation.append("sabs(x,λ)");
                             ImGui::SetItemTooltip("Absolute value, but smooth.\nArgument 1 is f(x), argument 2 λ (blending)");
 
                             if(ImGui::MenuItem("sign")) equation.append("sign");
                             ImGui::SetItemTooltip("Returns sign of input. N<0 => -1, 0 => 0, N>0 => 1");
 
-                            if(ImGui::MenuItem("gcf(")) equation.append("gcf(round )");
+                            if(ImGui::MenuItem("gcf()")) equation.append("gcf(round )");
                             ImGui::SetItemTooltip("Calculates the greatest common factor, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nInputs will be rounded when graphing.");
 
-                            if(ImGui::MenuItem("lcm(")) equation.append("lcm(round ");
+                            if(ImGui::MenuItem("lcm()")) equation.append("lcm(round ");
                             ImGui::SetItemTooltip("Calculates the lowest common multiple, takes multiple arguments.\nWill cause extreme output for numbers with many decimal places.\nInputs will be rounded when graphing.");
 
                             if(ImGui::MenuItem("prime")) equation.append("prime");
@@ -1571,28 +1572,28 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Statistics"))
                         {
-                            if(ImGui::MenuItem("rndint(")) equation.append("rndint(min, max)");
+                            if(ImGui::MenuItem("rndint()")) equation.append("rndint(min, max)");
                             ImGui::SetItemTooltip("Takes a lower bound and upper bound, returns a random integer in range.");
                             
-                            if(ImGui::MenuItem("mean(")) equation.append("mean(");
+                            if(ImGui::MenuItem("mean()")) equation.append("mean(");
                             ImGui::SetItemTooltip("Averages inputs, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("median(")) equation.append("median(");
+                            if(ImGui::MenuItem("median()")) equation.append("median(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns median, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("stdevp(")) equation.append("stdevp(");
+                            if(ImGui::MenuItem("stdevp()")) equation.append("stdevp(");
                             ImGui::SetItemTooltip("Population standard deviation, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("max(")) equation.append("max(");
+                            if(ImGui::MenuItem("max()")) equation.append("max(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns greatest, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("min(")) equation.append("min(");
+                            if(ImGui::MenuItem("min()")) equation.append("min(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns lowest, takes multiple arguments.");
 
-                            if(ImGui::MenuItem("smax(")) equation.append("smax(f(x), g(x), λ)");
+                            if(ImGui::MenuItem("smax()")) equation.append("smax(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Maximum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
 
-                            if(ImGui::MenuItem("smin(")) equation.append("smin(f(x), g(x), λ)");
+                            if(ImGui::MenuItem("smin()")) equation.append("smin(f(x), g(x), λ)");
                             ImGui::SetItemTooltip("Smooth Minimum for 2 functions. Takes three arguments.\nArgument 1 is f(x), argument 2 g(x), argument 3 λ (blending)");
 
                             ImGui::EndMenu();
@@ -1600,7 +1601,7 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Misc."))
                         {
-                            if(ImGui::MenuItem("rndsel(")) equation.append("rndsel(");
+                            if(ImGui::MenuItem("rndsel()")) equation.append("rndsel(");
                             ImGui::SetItemTooltip("Evaluates all inputs and returns a random one, takes multiple arguments.");
 
                             if(ImGui::MenuItem("sat")) equation.append("sat");
@@ -1609,7 +1610,7 @@ int main(int, char**)
                             if(ImGui::MenuItem("sstep")) equation.append("sstep");
                             ImGui::SetItemTooltip("Smooth transition between 0 and 1.");
 
-                            if(ImGui::MenuItem("mix(")) equation.append("mix(min, max, f(x)");
+                            if(ImGui::MenuItem("mix()")) equation.append("mix(min, max, f(x)");
                             ImGui::SetItemTooltip("Mixes args 1, 2, by a function between 0 and 1.");
 
                             if(ImGui::MenuItem("ReLU")) equation.append("ReLU");
@@ -1627,7 +1628,7 @@ int main(int, char**)
                     {
                         ImGui::MenuItem("false = 0, true = 1, if N≠0 => true",NULL,false,false);
 
-                        if(ImGui::MenuItem("if(")) equation.append("if(condition, true, false)");
+                        if(ImGui::MenuItem("if()")) equation.append("if(condition, true, false)");
                         ImGui::SetItemTooltip("Argument 1 is a condition, argument 2 returns if true, argument 3 returns if false (optional).");
 
                         if(ImGui::MenuItem("<")) equation.append("<");
@@ -1722,7 +1723,6 @@ int main(int, char**)
                     }
                     ImGui::EndMenu();
                 }
-
                 ImGui::SetItemTooltip("Learn about the calculator.");
 
                 ImGui::EndMenuBar();
@@ -1797,7 +1797,11 @@ int main(int, char**)
             if(result.find('\n')!=std::string::npos)
             {
                 ImGui::SameLine();
-                if(ImGui::BeginMenu("Result"))
+                std::string label;
+                if(lessetB::globals::error) label="Errors";
+                else label="Result";
+
+                if(ImGui::BeginMenu(label.c_str()))
                 {
 
                     std::string line;
@@ -1805,13 +1809,13 @@ int main(int, char**)
                     
                     for(size_t i{}; i<result.length();)
                     {
-                        line=result.substr(i,result.find('\n',i)-i);
+                        line=result.substr(i,result.find('\n',i)-i)+"##"+std::to_string(i);
                         if(ImGui::Button(line.c_str()))
                         {
                             ImGui::SetClipboardText(line.c_str());
                         }
                         ImGui::SetItemTooltip("Click to copy.");
-                        i+=line.length()+1;
+                        i+=line.length()-1-std::to_string(i).length();
                     }
                     ImGui::EndMenu();
 
