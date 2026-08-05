@@ -1,15 +1,16 @@
 # LessetG
 
-A calculator. With a GUI. That graphs. 
-
-Also, it has a small scripting language. And like, 64 functions. And variables. And macros. And a whole lotta jank.
-This is not a professional application, and should not be treated as such. This is my ad-hoc calculator, and nothing more.
+A calculator. With a GUI. That graphs. Stylable, too. With a military grade scripting language. 
+And like, >64 functions. And variables. And macros. And a whole lotta jank.
+This is not a professional application, and should not be treated as such.
 
 <img src="/Assets/graph.png" height="75%" width="75%">
 
 To compile:
 
 - Install Vulkan headers
+
+- Copy the contents of ImStyle/src into the source directory of LessetG (https://github.com/csprite/ImStyle) 
 
 - Install the Boost C++ library https://www.boost.org/
 
@@ -29,6 +30,6 @@ To compile:
 
 - Pray it works lol
 
-This readme currently sucks. In case you see this line, feel free to tell me to make it better, because I forgot or haven't gotten to it yet.
+This readme probably still sucks.
 
 No coding agents or LLMs or similar were used for this. In case this line disappears, I have succumbed to the dark side.

@@ -62,7 +62,7 @@ enum class token_t
     NUMBER,
     ROOT,
     LOG,
-    DERIVE,
+    DIFF,
     MEAN, // Meanie
     MEDIAN,
     STDEVP,
@@ -124,7 +124,7 @@ struct Options
     cpp_dec_float_100 xStep{}; // Hey, reference
     cpp_dec_float_100 aroundTruthinessLeniency{0.01};
     bool interpolateDiscontinuities{};
-    bool followImplicitMultiplicationPriorityConvention{true};
+    bool prioritizeImplicitMultiplication{true};
     bool showFractions{true};
     std::string ans;
 };
@@ -371,7 +371,7 @@ namespace globals
     {
         {"root", token_t::ROOT},
         {"log", token_t::LOG},
-        {"derive", token_t::DERIVE},
+        {"diff", token_t::DIFF},
         {"mean", token_t::MEAN},
         {"median", token_t::MEDIAN},
         {"stdevp", token_t::STDEVP},
@@ -572,7 +572,7 @@ class Token
 
         else if(type==token_t::SUBEXPR || type==token_t::SUM ||
                 type==token_t::ROOT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS || type==token_t::IF ||
-                type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DERIVE || type==token_t::MIX ||
+                type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DIFF || type==token_t::MIX ||
                 type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL) return tokenCategory_t::SUBEXPR;
 
         else if(type==token_t::FUNCTION) return tokenCategory_t::FUNCTION;
@@ -632,8 +632,8 @@ void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens,
 void getVariableArgs(std::vector<Token>&, Options&);
 
 template <typename T = cpp_dec_float_100> T calculation(std::vector<Token>, const T xValue, T sumVar=NAN);
-std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber);
-
+std::vector<Point> calculationCallerGraphing(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber);
+inline std::string calculationCallerTable(std::vector<Token> &tokens, cpp_dec_float_100 xValue, cpp_dec_float_100 xValueMax, size_t threadNumber, size_t totalCalculations);
 template <typename T = cpp_dec_float_100> T evaluateAbs(const Token &arg, const T xValue, const T sumVar);
 template <typename T = cpp_dec_float_100> T evaluateIf(const Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLog(const Token &arg, const T xValue);
@@ -946,7 +946,14 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             resultAsOSStream.precision(MAXOUTPUTPRECISION);
             if(options.xStep==0)options.xStep=INFINITY;
             size_t i{};
-            for(cpp_dec_float_100 xValue=options.xMin; xValue<=options.xMax+0.000001; xValue+=options.xStep)
+            size_t totalCalculations = static_cast<size_t>(abs(options.xMax-options.xMin)/abs(options.xStep))+1;
+            if(totalCalculations>100000)
+            {
+                options.xMax=options.xMin+options.xStep*100000;
+                totalCalculations=100000;
+            }
+
+            for(cpp_dec_float_100 xValue=options.xMin; xValue<=options.xMax+0.000000001; xValue+=options.xStep)
             {
                 i++;
                 std::ostringstream xValueAsOSStream;
@@ -985,7 +992,9 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                         else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
                     }
                 }
-                result+=std::to_string(i)+": (" + xValueAsOSStream.str() + " ;" + resultAsOSStream.str()+")\n";
+                result+=std::to_string(i);
+                for(size_t spaces{}; spaces<std::to_string(totalCalculations).length()-std::to_string(i).length(); spaces++) result+="  ";
+                result+=": (" + xValueAsOSStream.str() + " ; " + resultAsOSStream.str()+")\n";
                 resultAsOSStream.str("");
                 resultAsOSStream.clear();
             }
@@ -1003,8 +1012,8 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             {
                 double perThreadRange{abs(options.xMax-options.xMin)/threadCount};
                 double thisThreadOffset{perThreadRange*i};
-                double thisThreadXValue{static_cast<float>(options.xMin)+thisThreadOffset};
-                results.push_back(std::async(calculationCaller,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
+                double thisThreadXValue{static_cast<double>(options.xMin+thisThreadOffset)};
+                results.push_back(std::async(calculationCallerGraphing,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
             }
 
             for(size_t i{}; i<threadCount; i++)
@@ -1097,10 +1106,27 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
         return false;
 }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+inline std::string calculationCallerTable(std::vector<Token> &tokens, cpp_dec_float_100 xValue, cpp_dec_float_100 xValueMax, size_t threadNumber, size_t totalCalculations)
+{
+    //if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<double>(globals::options.xStep);
+    std::string points;
+    std::ostringstream oss;
+    for(size_t i{};xValue<xValueMax; xValue+=globals::options.xStep)
+    {
+        i++;
+        oss<<i<<": ("<<xValue << " ; " << calculation<cpp_dec_float_100>(tokens,xValue) << ")\n";
+        points+=oss.str();
+        oss.str("");
+        oss.clear();
+    }
+    return points;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-inline std::vector<Point> calculationCaller(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
+inline std::vector<Point> calculationCallerGraphing(std::vector<Token> &tokens, double xValue, double xValueMax, size_t threadNumber)
 {
     //if(threadNumber==std::thread::hardware_concurrency()-1) xValueMax+=static_cast<double>(globals::options.xStep);
     std::vector<Point> points;
@@ -1155,11 +1181,6 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
                 if(input.at(i)==')') nestingLevel--;
                 else if(input.at(i)=='(') nestingLevel++;
                 currentToken.push_back(input.at(i));
-                // if((i==input.length()-2 && input.at(i)==',' && input.at(i+1)==')') || (input.at(i-1)==',' && input.at(i)==',') || (nestingLevel==0 && input.at(i-1)==',')) //Check for some bad argument cases
-                // {
-                //     currentToken.clear();
-                //     continue;
-                // }
                 if(nestingLevel==0 || i==input.length()-1)
                 {
                     if(argCount>argFound && !globals::passedCalculationsFile)
@@ -1191,15 +1212,16 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     {
         return globals::tokenMemory.find(input)->second;
     }
+
     static bool firstRun{true};
     if(resetFirstRun)
     {
         firstRun=true;
         return std::vector<Token>();
     }
+    
     int nestingLevel{};
     int absNestingLevel{};
-    uint startOfFunction{};
     std::vector<Token> tokens{};
     
     std::string currentToken{};
@@ -1208,19 +1230,18 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
     for(size_t i{}; i<input.length(); i++)
     {
-        // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.
-        if(input.at(i)=='|') for(startOfFunction=i; i<input.length(); i++)
+        // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.s
+        if(input.at(i)=='|') for(;i<input.length(); i++)
         {
             if(!inFunctionCall)
             {
-                startOfFunction=i;
                 for(;input.at(i)=='|' && i<input.length()-1;i++)
                 {
                     absNestingLevel++;
                     currentToken.push_back('|');
                 }
                 inFunctionCall=true;
-                if(i>=input.length()-1)
+                if(i==input.length()-1)
                 {
                     globals::errorMessage+="Bad absolute value parentheses\n";
                     globals::error=true;
@@ -1229,9 +1250,9 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
             }
             if(input.at(i)==')') nestingLevel--;
             else if(input.at(i)=='(') nestingLevel++;
+            if(nestingLevel==0 && input.at(i)=='|') absNestingLevel--;
 
-            if(i<input.length() && nestingLevel==0 && input.at(i)=='|') absNestingLevel--;
-            if(i>startOfFunction+1 && nestingLevel<=0 && absNestingLevel==0 && nestingLevel==false && input.at(i)=='|' || 
+            if(nestingLevel==0 && absNestingLevel==0 && nestingLevel==0 && input.at(i)=='|' || 
                (i==input.length()-1 && input.at(i)=='|')) 
             {
                 currentToken.push_back(input.at(i));
@@ -1245,7 +1266,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
         // Parse MultiArg Functions
         if(!inFunctionCall && input.find("mean(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mean",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("derive(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"derive",i,inFunctionCall);
+        else if(!inFunctionCall && input.find("diff(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"diff",i,inFunctionCall);
         else if(!inFunctionCall && input.find("median(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"median",i,inFunctionCall);
         else if(!inFunctionCall && input.find("stdevp(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"stdevp",i,inFunctionCall);
         else if(!inFunctionCall && input.find("max(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"max",i,inFunctionCall);
@@ -1267,7 +1288,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall,3);
 
         // Parse Subexpression
-        if(currentToken=="" && !inFunctionCall && input.at(i)=='(') for(; i<input.length(); i++)
+        if(currentToken=="" && input.at(i)=='(') for(; i<input.length(); i++)
         {
             if(input.at(i)==')') nestingLevel--;
             else if(input.at(i)=='(') nestingLevel++;
@@ -1276,7 +1297,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         }
 
         // Parse assignment
-        if(currentToken=="" && !inFunctionCall && firstRun && (input.find("let",i)==i || input.find("set",i)==i)&& input.find('=',i)!=std::string::npos)
+        if(currentToken=="" && firstRun && (input.find("let",i)==i || input.find("set",i)==i)&& input.find('=',i)!=std::string::npos)
         {
             if(input.find("let",i)==i) currentToken.append("let");
             else currentToken.append("set");
@@ -1292,7 +1313,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         }
         
         // Parse other symbols
-        if(currentToken=="" && !inFunctionCall)
+        if(currentToken=="")
         {
             size_t k{};
             for(; k<globals::userMacros.size(); k++)
@@ -1339,9 +1360,11 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
                                   (i>0 && std::isdigit(input.at(i-1)) &&
                                    input.at(i)=='e' && 
-                                   i<input.length()-2 &&
-                                   (input.at(i+1)=='+' || input.at(i+1)=='-') &&
-                                   std::isdigit(input.at(i+2)))); i++) // 5e±5
+
+                                   ((i<input.length()-2 &&
+                                   (((input.at(i+1)=='+' || input.at(i+1)=='-') &&
+                                   std::isdigit(input.at(i+2))))) || 
+                                   i<input.length()-1 && std::isdigit(input.at(i+1))))); i++) // 5e±5
 
                                    // I am deeply sorry.
         {
@@ -1366,7 +1389,6 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         if(currentToken!="") tokens.emplace_back(currentToken);
         currentToken.clear();
         inFunctionCall=false;
-        startOfFunction=0;
     }
     if(currentToken!="") tokens.emplace_back(currentToken);
     if(firstRun) firstRun=false;
@@ -1479,6 +1501,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
             resultAsOSStream.clear();
         }
     }   
+    
     for(size_t i{}; i<tokens.size(); i++)
     {
         sumVar=floor(sumVar);
@@ -1492,7 +1515,6 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
     if(tokens.size()==1 && tokens.at(0).typeCategory()==tokenCategory_t::NUMBER) return tokens.at(0).number(xValue);
     if(tokens.size()==1 && tokens.at(0).type()==token_t::INVALID) return NAN;
     size_t pass{};
-    size_t failedPass{LOGICALS};
     for(; pass<=LOGICALS && globals::errorMessage==""; pass++)
     {
         for(int i{}; i<tokens.size() && globals::errorMessage==""; i++) // Stop trying when error found
@@ -1505,26 +1527,26 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
 
                     switch(tokens.at(i).type())
                     {
-                        case token_t::SUBEXPR: {evaluatedSubexpr=calculation(getTokens(tokens.at(i).value()), xValue, sumVar); break;}
-                        case token_t::DERIVE: {evaluatedSubexpr=evaluateDerive(tokens.at(i), xValue); break;}
-                        case token_t::MEAN: {evaluatedSubexpr=evaluateMean(tokens.at(i), xValue); break;}
-                        case token_t::MEDIAN: {evaluatedSubexpr=evaluateMedian(tokens.at(i), xValue); break;}
-                        case token_t::STDEVP: {evaluatedSubexpr=evaluateStdevp(tokens.at(i), xValue); break;}
-                        case token_t::MAX: {evaluatedSubexpr=evaluateMax(tokens.at(i), xValue); break;}
-                        case token_t::MIX: {evaluatedSubexpr=evaluateMix(tokens.at(i), xValue); break;}
-                        case token_t::SABS: {evaluatedSubexpr=evaluateSabs(tokens.at(i), xValue); break;}
-                        case token_t::SMAX: {evaluatedSubexpr=evaluateSmax(tokens.at(i), xValue); break;}
-                        case token_t::SMIN: {evaluatedSubexpr=evaluateSmin(tokens.at(i), xValue); break;}
-                        case token_t::GCF: {evaluatedSubexpr=evaluateGcf(tokens.at(i), xValue); break;}
-                        case token_t::LCM: {evaluatedSubexpr=evaluateLcm(tokens.at(i), xValue); break;}
-                        case token_t::MIN: {evaluatedSubexpr=evaluateMin(tokens.at(i), xValue); break;}
-                        case token_t::RNDSEL: {evaluatedSubexpr=evaluateRndsel(tokens.at(i), xValue); break;}
-                        case token_t::RNDINT: {evaluatedSubexpr=evaluateRndint(tokens.at(i), xValue); break;}
-                        case token_t::ABS: {evaluatedSubexpr=evaluateAbs(tokens.at(i), xValue, sumVar); break;}
-                        case token_t::ROOT: {evaluatedSubexpr=evaluateRoot(tokens.at(i), xValue); break;}
-                        case token_t::LOG: {evaluatedSubexpr=evaluateLog(tokens.at(i), xValue); break;}
-                        case token_t::IF: {evaluatedSubexpr=evaluateIf(tokens.at(i), xValue); break;}    
-                        case token_t::SUM: {evaluatedSubexpr=evaluateSum(tokens.at(i), xValue); break;}    
+                        case token_t::SUBEXPR: evaluatedSubexpr = calculation(getTokens(tokens.at(i).value()), xValue, sumVar); break;
+                        case token_t::DIFF:    evaluatedSubexpr = evaluateDiff(tokens.at(i), xValue); break;
+                        case token_t::MEAN:    evaluatedSubexpr = evaluateMean(tokens.at(i), xValue); break;
+                        case token_t::MEDIAN:  evaluatedSubexpr = evaluateMedian(tokens.at(i), xValue); break;
+                        case token_t::STDEVP:  evaluatedSubexpr = evaluateStdevp(tokens.at(i), xValue); break;
+                        case token_t::MAX:     evaluatedSubexpr = evaluateMax(tokens.at(i), xValue); break;
+                        case token_t::MIX:     evaluatedSubexpr = evaluateMix(tokens.at(i), xValue); break;
+                        case token_t::SABS:    evaluatedSubexpr = evaluateSabs(tokens.at(i), xValue); break;
+                        case token_t::SMAX:    evaluatedSubexpr = evaluateSmax(tokens.at(i), xValue); break;
+                        case token_t::SMIN:    evaluatedSubexpr = evaluateSmin(tokens.at(i), xValue); break;
+                        case token_t::GCF:     evaluatedSubexpr = evaluateGcf(tokens.at(i), xValue); break;
+                        case token_t::LCM:     evaluatedSubexpr = evaluateLcm(tokens.at(i), xValue); break;
+                        case token_t::MIN:     evaluatedSubexpr = evaluateMin(tokens.at(i), xValue); break;
+                        case token_t::RNDSEL:  evaluatedSubexpr = evaluateRndsel(tokens.at(i), xValue); break;
+                        case token_t::RNDINT:  evaluatedSubexpr = evaluateRndint(tokens.at(i), xValue); break;
+                        case token_t::ABS:     evaluatedSubexpr = evaluateAbs(tokens.at(i), xValue, sumVar); break;
+                        case token_t::ROOT:    evaluatedSubexpr = evaluateRoot(tokens.at(i), xValue); break;
+                        case token_t::LOG:     evaluatedSubexpr = evaluateLog(tokens.at(i), xValue); break;
+                        case token_t::IF:      evaluatedSubexpr = evaluateIf(tokens.at(i), xValue); break;
+                        case token_t::SUM:     evaluatedSubexpr = evaluateSum(tokens.at(i), xValue); break;
                         default:{}                
                     }
                     resultAsOSStream<<evaluatedSubexpr;
@@ -1632,7 +1654,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 }
             }
 
-            else if(pass==MULTIPLICATIONIMPLICIT && globals::options.followImplicitMultiplicationPriorityConvention && i>1)
+            else if(pass==MULTIPLICATIONIMPLICIT && globals::options.prioritizeImplicitMultiplication && i>1)
             {
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
@@ -1918,7 +1940,7 @@ T evaluateGcf( const Token &arg, const T xValue)
     }
     while(argVals.size()>=2)
     {
-        while(argVals.at(1)!=0)
+        while(argVals.at(1)>0)
         {
             tempValue=argVals.at(1);
             argVals.at(1)=boost::math::ccmath::fmod(argVals.at(0),argVals.at(1));
@@ -1975,13 +1997,13 @@ T evaluateMax( const Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateDerive( const Token &arg, const T xValue)
+T evaluateDiff( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
     int nestingLevel{};
-    T deriveStepSize = static_cast<T>(globals::options.xStep);
-    if(deriveStepSize<0.05) deriveStepSize=0.05;
+    T diffStepSize = static_cast<T>(globals::options.xStep);
+    if(diffStepSize<0.05) diffStepSize=0.05;
     for(size_t i{}; i<arg.value().length() && nestingLevel>=0 && argVals.size()<2; i++)
     {
         if(globals::error) return NAN;
@@ -1991,19 +2013,19 @@ T evaluateDerive( const Token &arg, const T xValue)
         if(!(arg.value().at(i)==',' && nestingLevel==0) && i<arg.value().length()) currentToken.push_back(arg.value().at(i));
         else
         {
-            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
-            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+diffStepSize));
+            argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-diffStepSize));
             currentToken.clear();
             break;
         }
     }
     if(currentToken!="")
     {
-        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+deriveStepSize));
-        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-deriveStepSize));
+        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue+diffStepSize));
+        argVals.emplace_back(calculation<T>(getTokens(currentToken), xValue-diffStepSize));
         currentToken.clear();  
     }
-    return (argVals.at(0)-argVals.at(1))/(deriveStepSize*2);
+    return (argVals.at(0)-argVals.at(1))/(diffStepSize*2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2123,7 +2145,7 @@ T evaluateRoot( const Token &arg, const T xValue)
     // std::swap(argVals.at(0),argVals.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
     Frac frac {decimalToFraction(argVals.at(1))};
-    if(argVals.at(0)==0) return NAN;
+    if(argVals.at(1)==0) return NAN;
     if(abs(frac.x)!=INFINITY)
     {
         if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && argVals.at(0)<0)
@@ -2362,6 +2384,7 @@ inline bool isNumber(const std::string &input)
         if(input.at(i)=='.')
         {
             dotCount++;
+            if(i==input.length()-1) return false;
             if(eCount) 
             {
                 if(!globals::passedCalculationsFile) globals::errorMessage+="Number \"" + input + "\" can only have an integer exponent\n";
@@ -2467,7 +2490,7 @@ Frac decimalToFraction(T enumerator, size_t precision)
     
     if(occurences>1)
     {
-        if constexpr (std::is_same<double, T>()) 
+        if constexpr (std::is_same<double, T>() || std::is_same<long double, T>()) 
         {
             enumerator=std::stold(number.substr(0,number.find('.')));
         }
