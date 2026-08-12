@@ -275,6 +275,7 @@ namespace globals
         {"abs", token_t::FUNCTION},
         {"floor", token_t::FUNCTION},
         {"ceil", token_t::FUNCTION},
+        {"bround", token_t::FUNCTION},
         {"round", token_t::FUNCTION},
         {"sat", token_t::FUNCTION},
         {"ReLU", token_t::FUNCTION},
@@ -283,7 +284,7 @@ namespace globals
         {"gam", token_t::FUNCTION},
 
         {"x", token_t::VARIABLE},
-        {"n", token_t::SUMVAR}
+        {"n", token_t::SUMVAR},
 
     };
 
@@ -291,7 +292,6 @@ namespace globals
     {
         {"!", token_t::UNARYOP},
         {"-", token_t::UNARYOP},
-
         {"!!", token_t::UNARYOP},
     };
 
@@ -361,6 +361,7 @@ namespace globals
         {"abs", token_t::FUNCTION},
         {"floor", token_t::FUNCTION},
         {"ceil", token_t::FUNCTION},
+        {"bround", token_t::FUNCTION},
         {"round", token_t::FUNCTION},
         {"sat", token_t::FUNCTION},
         {"ReLU", token_t::FUNCTION},
@@ -651,6 +652,7 @@ template <typename T = cpp_dec_float_100> T evaluateUnary(Token&, Token&, const 
 template <typename T = cpp_dec_float_100> T evaluateBinary(Token&, Token&, Token&, const T xValue);
 
 template <typename T> bool evaluateArgs( const Token &arg, const T xValue, std::vector<T>&argVals, size_t argsToEval=SIZE_MAX, T sumVar=NAN);
+inline bool containsVariable(const std::string &equation);
 
 
 template <typename T> Frac decimalToFraction(T enumerator, size_t precision = 15);
@@ -678,7 +680,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
     globals::previousResult="nan";
     if(options.ans!="") globals::previousResult=options.ans;
     std::cout.precision(MAXOUTPUTPRECISION);
-    resultAsOSStream.precision(MAXOUTPUTPRECISION);
+    resultAsOSStream.precision(MAXOUTPUTPRECISION); 
 
         passedInFile:
         if(equation.find('#') != std::string::npos) equation.erase(equation.find('#'));
@@ -753,12 +755,13 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             }
         }
 
-        if(replaceMacros(equation))
-        {
-            equation.clear();
-            if(passedCalculationsFile) return false;
-            return false;
-        }
+        if(!canDeclareIdentifiers)
+            if(replaceMacros(equation))
+            {
+                equation.clear();
+                if(passedCalculationsFile) return false;
+                return false;
+            }
 
         int parenthesesImbalance{};
         uint absValueLineCount{};
@@ -835,6 +838,11 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 }
                 if(invalidName) break;
 
+                if(identifierName.length()<3 && tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
+                {
+                    result+="Note: short macro names can cause some functions to be inaccessible. ";
+                }
+
                 for(j=i+1; j<tokens.size() && tokens.at(j).type()!=token_t::ASSIGNMENTMACRO && tokens.at(j).type()!=token_t::VARIABLE; j++)
                 {
                     if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE && tokens.at(j).type()==token_t::ASSIGNMENTVARIABLE) break;
@@ -870,7 +878,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
         bool hasX{};
         
-        if(tokens.size()==0) 
+        if(tokens.size()==0 && !options.graph) 
         {
             resultAsOSStream.str("");
             resultAsOSStream.clear();
@@ -894,7 +902,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         }
         if(equation.at(0)=='x') hasX=true;
 
-        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile)) // No x found
+        if(!hasX && !options.graph && !(canDeclareIdentifiers && !passedCalculationsFile)) // No x found
         {
             resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, NAN);
 
@@ -957,7 +965,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             {
                 i++;
                 std::ostringstream xValueAsOSStream;
-                if(xValue>(-0.00002) && xValue<0.00002) xValue=0;
+                if(xValue>(-0.00002) && xValue<0.00002 && options.xStep>0.00002) xValue=0;
                 xValueAsOSStream<<xValue;
                 xValue=static_cast<cpp_dec_float_100>(xValueAsOSStream.str());
 
@@ -999,32 +1007,49 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                 resultAsOSStream.clear();
             }
         }
-        else if(!(canDeclareIdentifiers && !passedCalculationsFile))
+        else if(!(canDeclareIdentifiers && !passedCalculationsFile) && options.graph)
         {
             globals::points.first.clear();
             globals::points.second.clear();
 
-            uint threadCount{std::thread::hardware_concurrency()};
-            std::vector<std::future<std::vector<Point>>> results;
-            if(globals::options.xStep<=0.0000000001) globals::options.xStep=0.0000000001;
+            if(hasX)
+            {    
+                uint threadCount{std::thread::hardware_concurrency()};
+                std::vector<std::future<std::vector<Point>>> results;
+                // if(globals::options.xStep==0) globals::options.xStep=DBL_EPSILON;
 
-            for(size_t i{}; i<threadCount; i++)
-            {
-                double perThreadRange{abs(options.xMax-options.xMin)/threadCount};
-                double thisThreadOffset{perThreadRange*i};
-                double thisThreadXValue{static_cast<double>(options.xMin+thisThreadOffset)};
-                results.push_back(std::async(calculationCallerGraphing,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
-            }
-
-            for(size_t i{}; i<threadCount; i++)
-            {
-                std::vector<Point> thisThreadPoints=results.at(i).get();
-                for(size_t j{}; j<thisThreadPoints.size(); j++)
+                for(size_t i{}; i<threadCount; i++)
                 {
-                    globals::points.first.emplace_back(thisThreadPoints.at(j).x);
-                    globals::points.second.emplace_back(thisThreadPoints.at(j).y);
+                    double perThreadRange{abs(options.xMax-options.xMin)/threadCount};
+                    double thisThreadOffset{perThreadRange*i};
+                    double thisThreadXValue{static_cast<double>(options.xMin+thisThreadOffset)};
+                    results.push_back(std::async(calculationCallerGraphing,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
                 }
-            }    
+
+                for(size_t i{}; i<threadCount; i++)
+                {
+                    std::vector<Point> thisThreadPoints=results.at(i).get();
+                    for(size_t j{}; j<thisThreadPoints.size(); j++)
+                    {
+                        globals::points.first.emplace_back(thisThreadPoints.at(j).x);
+                        globals::points.second.emplace_back(thisThreadPoints.at(j).y);
+                    }
+                }    
+            }
+            else // Graphs without x are constant and thus only need to be calculated once.
+            {
+                double value = calculation<double>(tokens,NAN,NAN);
+                size_t amount = static_cast<size_t>((globals::options.xMax-globals::options.xMin)/globals::options.xStep);
+                double xValue = static_cast<double>(globals::options.xMin);
+                globals::options.xStep*=2;
+
+                for(size_t i{}; i<amount; i++)
+                {
+                    globals::points.first.emplace_back(xValue);
+                    xValue+=static_cast<double>(globals::options.xStep);
+                    globals::points.second.emplace_back(value);
+                }
+            }
         }
 
         bool isKnownConstant{};
@@ -1085,8 +1110,9 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         }
 
 
-        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile))
+        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile) && !options.graph)
         {
+            // This caused me immense pain
             std::string addToHistory = '\n'+equation+" = "+result;
             if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
         }
@@ -1230,7 +1256,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
     for(size_t i{}; i<input.length(); i++)
     {
-        // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.s
+        // Parse |x|... or ||x|| if the user hates me... or ||||x||||. whatever.
         if(input.at(i)=='|') for(;i<input.length(); i++)
         {
             if(!inFunctionCall)
@@ -1315,16 +1341,23 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         // Parse other symbols
         if(currentToken=="")
         {
-            size_t k{};
-            for(; k<globals::userMacros.size(); k++)
-            {
-                if(input.find(globals::userMacros.at(k).name,i)==i)
-                {
-                    currentToken=globals::userMacros.at(k).name;
-                    i+=globals::userMacros.at(k).name.length()-1;
-                }
-            }
-            if(k && currentToken!="") goto cleanup;
+            // size_t k{};
+            // for(; k<globals::userMacros.size(); k++)
+            // {
+            //     if(input.find(globals::userMacros.at(k).name,i)==i)
+            //     {
+                    
+            //         if(k>=3 && input.find("set",k-3)==k-3)
+            //         {
+            //             break;
+            //         }
+            //         input.erase(k,globals::userMacros.at(k).name.length());
+            //         input.insert(k,globals::userMacros.at(k).value);
+            //         i+=globals::userMacros.at(k).name.length()-globals::userMacros.at(k).value.length();
+            //         break;
+            //     }
+            // }
+            // if(k && currentToken!="") goto cleanup;
 
             size_t j{};
             for(; j<globals::userVariables.size(); j++)
@@ -1398,6 +1431,40 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     // Remove some stray operators
     if(tokens.at(0).typeCategory()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
 
+    // Implicit parentheses around single argument functions
+    {
+        std::string newSubexpr="(";
+        bool disallowMinus{};
+        for(int i{1}; i<tokens.size(); i++)
+        {
+            if(tokens.at(i-1).type()==token_t::FUNCTION && 
+                (
+                    (tokens.at(i).typeCategory()==tokenCategory_t::NUMBER || tokens.at(i).type()==token_t::UNARYOP && tokens.at(i).value()!="-") || 
+                    (tokens.at(i).value()=="-" && !disallowMinus && i<tokens.size()-1 && tokens.at(i+1).typeCategory()==tokenCategory_t::NUMBER) ||
+                    ((tokens.at(i).value()=="**" || tokens.at(i).value()=="^") && i<tokens.size()-1 && tokens.at(i+1).typeCategory()==tokenCategory_t::NUMBER)
+                )
+              )
+            {
+                disallowMinus=true;
+                newSubexpr.append(tokens.at(i).value());
+                tokens.erase(tokens.begin()+i);
+                i--;
+                
+            }
+            else if(newSubexpr.length()>1)
+            {
+                tokens.insert(tokens.begin()+i, Token(newSubexpr));
+                newSubexpr="(";
+                disallowMinus=false;
+            }
+            
+        }
+        if(newSubexpr.length()>1)
+        {
+            tokens.insert(tokens.end(), Token(newSubexpr));
+        }
+    }
+
     // Implicit multiplication, removing unary plus, so on
 
     for(size_t i{1}; i<tokens.size(); i++)
@@ -1442,7 +1509,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         tokens.at(i-1).typeCategory()!=tokenCategory_t::NUMBER &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.erase(tokens.begin()+i--);
     }
-    
+
     for(int i{1}; i<tokens.size(); i++)
     {
         if(tokens.at(i).type()==token_t::BINARYOP && tokens.at(i-1).type()==token_t::BINARYOP) // Example: 3**/3 -> 3**3
@@ -1475,7 +1542,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 template <typename T>
 T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
 {
-    if(tokens.size()==0) return 0;
+    if(tokens.size()==0) return NAN;
     std::ostringstream resultAsOSStream;
     if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
     else resultAsOSStream.precision(15);
@@ -1600,29 +1667,6 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
             else if (pass==FUNCTIONS && i!=0)
             {
 
-                // Account for something like sin-1... or sqrt-1 if the user feels funny.
-                if(i<tokens.size()-1 && tokens.at(i-1).type()==token_t::FUNCTION  && tokens.at(i).value()=="-" && tokens.at(i+1).typeCategory()==tokenCategory_t::NUMBER)
-                {
-                    resultAsOSStream<<evaluateUnary(tokens.at(i+1), tokens.at(i), xValue);
-                    tokens.at(i)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
-                    tokens.erase(tokens.begin()+i+1);                          
-                }
-                // sin 3 h* x
-                if(i<tokens.size()-2 && 
-                  tokens.at(i-1).type()==token_t::FUNCTION  && 
-                  tokens.at(i).typeCategory()==tokenCategory_t::NUMBER && 
-                  tokens.at(i+1).value()=="h*" && 
-                  tokens.at(i+2).typeCategory()==tokenCategory_t::NUMBER)
-                {
-                    resultAsOSStream<<evaluateBinary(tokens.at(i),tokens.at(i+1), tokens.at(i+2), xValue);
-                    tokens.at(i)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
-                    tokens.erase(tokens.begin()+i+1,tokens.begin()+i+3);                          
-                }
-
                 if((tokens.at(i-1).type()==token_t::FUNCTION) && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
@@ -1745,6 +1789,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
             }
         }
     }
+    if(tokens.size()==1 && tokens.at(0).number(xValue)==-0) tokens.at(0)=Token("0");
     if(tokens.size()==1 && tokens.at(0).type()==token_t::VARIABLE) return xValue;
     if constexpr (std::is_same<T,cpp_dec_float_100>::value)
     {
@@ -2047,14 +2092,17 @@ T evaluateSmax( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     std::string currentToken;
+
     if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
     if(argVals.size()==0) return NAN;
     if(argVals.size()<2) return argVals.at(0);
     if(argVals.size()==2) argVals.push_back(0.5);
+
     T maxArg = argVals.at(0);
     if(argVals.at(1)>maxArg) maxArg=argVals.at(1);
     T enumerator = argVals.at(2)-abs(argVals.at(0)-argVals.at(1));
     if(0>enumerator) enumerator=0;
+
     return maxArg+(pow(enumerator,2)/(4*argVals.at(2)));
     // return (argVals.at(0)+argVals.at(1)+sqrt(pow((argVals.at(0)-argVals.at(1)),2)+argVals.at(2)))/2;
 }
@@ -2315,6 +2363,14 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
     if(operation.value()=="atan") return atan(number);
 
     if(operation.value()=="round") return round(number);
+    if(operation.value()=="bround")
+    {
+        if(number+0.5 == round(number) && fmod(floor(number),2)==0)
+        {
+            return floor(number);
+        }
+        else return round(number);
+    }
     if(operation.value()=="floor") return floor(number);
     if(operation.value()=="ceil") return ceil(number);
     if(operation.value()=="abs") return abs(number);
@@ -2558,6 +2614,17 @@ inline bool addIdentifier(const Macro &newMacro)
     }
     globals::userMacros.emplace_back(newMacro);
     std::sort(globals::userMacros.begin(), globals::userMacros.end(), sortMacroesByNameLength);
+    return false;
+}
+
+inline bool containsVariable(const std::string &equation)
+{
+    if(equation.length()>=1 && equation.at(0)=='x') return true;
+    for(int i{}; i<equation.length(); i++)
+    {
+        if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) return true;
+        if(i>1&&equation.at(i)=='x' && equation.find("mix",i-2)!=i-2 && equation.find("max",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) return true;
+    }
     return false;
 }
 

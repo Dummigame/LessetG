@@ -84,7 +84,7 @@ bool addIdentifier(Instance &data,const lessetB::Macro &newMacro);
 bool addIdentifier(Instance &data,const lessetB::Variable &newVariable);
 bool replaceMacros(std::string &equation, Instance &instance);
 int addClosingParentheses(std::string &equation);
-bool containsVariable(const std::string &equation);
+bool IsPlotHidden();
 
 // -> Line 434
 
@@ -574,12 +574,28 @@ int main(int, char**)
 
     ImPlotRect limits{};
     float hueModifier{0.586};
-    float saturationModifier{1};
+    float saturationModifier{0.7};
 
     bool hasRunScriptInMainInstance{};
+    
+    size_t previousGraphsEquationsSize{};
 
-
+    
+{
+    ImGuiStyle initialStyle = style;
     ImGui::LoadStyleFrom("LessetGStyle.ini");
+    for(size_t i{}; i<ImGuiCol_COUNT; i++)
+    {
+        if(initialStyle.Colors[i].x!=style.Colors[i].x ||
+           initialStyle.Colors[i].y!=style.Colors[i].y ||
+           initialStyle.Colors[i].z!=style.Colors[i].z ||
+           initialStyle.Colors[i].w!=style.Colors[i].w)
+        {
+            hueModifier=0.5;
+            saturationModifier=0.5;
+        }
+    }
+}
     // -> Line 614
 
     // Main loop
@@ -625,6 +641,7 @@ int main(int, char**)
             
             if (ImGui::BeginMenuBar())
             {
+                // Scripting menu (These comments are to ctrl f faster lol)
                 if(ImGui::BeginMenu("Scripting"))
                 {
                     //ImGui::MenuItem("Everything about automation.",NULL,false,false);
@@ -676,6 +693,7 @@ int main(int, char**)
 
                         ImGui::EndMenu();
                     }
+                    // Run Menu (Run Script Menu)
                     ImGui::SetItemTooltip("Encapsulate calculator data.");
                     if (ImGui::BeginMenu("Run"))
                     {
@@ -866,7 +884,7 @@ int main(int, char**)
                         
                         ImGui::EndMenu();
                     }
-
+                    // Slider Menu
                     if(showSliderOption)
                     {
                         ImGui::Separator();
@@ -910,6 +928,7 @@ int main(int, char**)
                         }
                     }
                     ImGui::Separator();
+                    // Variables Menu
                     if (ImGui::BeginMenu("Variables"))
                     {
                         if (ImGui::BeginMenu("Add or change"))
@@ -918,6 +937,7 @@ int main(int, char**)
                             ImGui::InputText("Value",&newIdentifierValueVariable);
                             if (ImGui::Button("Assign"))
                             {
+                                recalculateGraphs=true;
                                 std::string combinedStatement{"let"+newIdentifierNameVariable+"="+newIdentifierValueVariable};
                                 lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignVariableReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                             }
@@ -949,7 +969,7 @@ int main(int, char**)
                         ImGui::EndMenu();
                     }
 
-
+                    // Macros Menu
                     if (ImGui::BeginMenu("Macros"))
                     {
                         if (ImGui::BeginMenu("Add or change"))
@@ -958,6 +978,8 @@ int main(int, char**)
                             ImGui::InputText("Value",&newIdentifierValueMacro);
                             if (ImGui::Button("Assign"))
                             {
+                                recalculateGraphs=true;
+                                lessetB::globals::tokenMemory.clear(); 
                                 std::string combinedStatement{"set"+newIdentifierNameMacro+"="+newIdentifierValueMacro};
                                 lessetB::mainLoop(options,true,false,combinedStatement,nothing,assignMacroReport,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,true);
                             }
@@ -992,7 +1014,7 @@ int main(int, char**)
                 }
                 ImGui::SetItemTooltip("Automate certain things.");
 
-
+                // Constants Menu
                 if (ImGui::BeginMenu("Constants"))
                 {
                     if(ImGui::BeginMenu("Mathematics"))
@@ -1103,7 +1125,7 @@ int main(int, char**)
                 ImGui::SetItemTooltip("Add certain constants to your equation.");
 
 
-
+                // Graph Menu
                 if (ImGui::BeginMenu("Graph"))
                 {
                     showGraphingMenuHint=false;
@@ -1145,8 +1167,8 @@ int main(int, char**)
                             char name[1]{}; // Trust
                             name[0]=nameIndex+'f';
 
-                            if(nameNumber>0) ImGui::Text("%s%lu%s",std::string(name).substr(0,1).c_str(),nameNumber+1,"(x) = ");
-                            else ImGui::Text("%s%s",std::string(name).substr(0,1).c_str(),"(x) = ");
+                            if(nameNumber>0) ImGui::Text("%s%lu%s",name,nameNumber+1,"(x) = ");
+                            else ImGui::Text("%s%s",name,"(x) = ");
 
                             ImGui::SameLine(53+(nameNumberLength)*5);
 
@@ -1160,11 +1182,8 @@ int main(int, char**)
                                 if(!(graphsEquations.at(i)==editingGraphEquation || editingGraphEquation==""))
                                 {
                                     std::string graphEquationExpandedMacros = editingGraphEquation;
-
-                                    replaceMacros(graphEquationExpandedMacros, instances.at(selectedInstance));
-                                    bool hasX = containsVariable(graphEquationExpandedMacros);
                                     int unclosedParentheses = addClosingParentheses(editingGraphEquation);
-                                    if(hasX)
+                                    if(unclosedParentheses>=0)
                                     {
                                         graphsEquations.at(i)=editingGraphEquation; 
                                         recalculateGraphIndex=i;
@@ -1187,8 +1206,9 @@ int main(int, char**)
 
                     ImGui::EndMenu();
                 }
-                ImGui::SetItemTooltip("Graph functions that include x.");
+                ImGui::SetItemTooltip("Graph functions of x.");
 
+                // Options Menu
                 if(ImGui::BeginMenu("Options"))
                 {
 
@@ -1618,6 +1638,9 @@ int main(int, char**)
                             if(ImGui::MenuItem("round")) equation.append("round");
                             ImGui::SetItemTooltip("Rounds number to nearest integer.");
 
+                            if(ImGui::MenuItem("bround")) equation.append("bround");
+                            ImGui::SetItemTooltip("Rounds number to nearest even integer (Banker's Rounding).");
+
                             if(ImGui::MenuItem("floor")) equation.append("floor");
                             ImGui::SetItemTooltip("Floors number to its integer part. π => 3");
 
@@ -1808,6 +1831,14 @@ int main(int, char**)
                     }
                 }
                 
+                if(graphsEquations.size() > previousGraphsEquationsSize)
+                {
+                    for(size_t i{}; i<graphsEquations.size(); i++)
+                    {
+                        addClosingParentheses(graphsEquations.at(i));
+                    }
+                }
+                previousGraphsEquationsSize=graphsEquations.size();
                 if(gayMode)
                 {
                     for(size_t i{6}; i<ImGuiCol_COUNT; i++)
@@ -1948,7 +1979,7 @@ int main(int, char**)
             {
                 // ImPlot::BustColorCache();
                 // ImPlot::PushColormap(colorMap);
-                ImPlot::SetupLegend(ImPlotLocation_NorthWest,ImPlotLegendFlags_NoButtons|ImPlotLegendFlags_Horizontal);
+                ImPlot::SetupLegend(ImPlotLocation_NorthWest,ImPlotLegendFlags_Horizontal);
                 ImPlotRect prevLimits {limits.X.Min, limits.X.Max, limits.Y.Min, limits.Y.Max};
                 limits = ImPlot::GetPlotLimits();
 
@@ -1957,37 +1988,6 @@ int main(int, char**)
                 bool skipRestOfFrame{};
                 if(graphsEquations.size()!=0)
                 {
-                    for(int i{}; i<graphsEquations.size();i++)
-                    {
-                        std::string graphEquationExpandedMacros = graphsEquations.at(i);
-                        replaceMacros(graphEquationExpandedMacros, instances.at(selectedInstance));
-                        bool hasX = containsVariable(graphEquationExpandedMacros);
-
-                        if(!hasX)
-                        {
-                            graphsEquations.erase(graphsEquations.begin()+i);
-                            i--;
-                            recalculateGraphs=true;
-                            skipRestOfFrame=true;
-                        }
-                    }
-
-
-                    if(skipRestOfFrame)
-                    {
-                        ImPlot::EndPlot();
-                        ImGui::End();
-                        // Rendering
-                        ImGui::Render();        ImDrawData* main_draw_data = ImGui::GetDrawData();        const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);        wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;        wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;        wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;        wd->ClearValue.color.float32[3] = clear_color.w;        if (!main_is_minimized)FrameRender(wd, main_draw_data);
-                        // Update and Render additional Platform Windows
-                        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable && false)        {            ImGui::UpdatePlatformWindows();            ImGui::RenderPlatformWindowsDefault();        }
-                        // Present Main Platform Window
-                        if (!main_is_minimized) FramePresent(wd);
-
-                        continue;
-                    }
-
-
                     float precisionDivisor=glfwGetVideoMode(glfwGetPrimaryMonitor())->refreshRate/io.Framerate; // Lower precision to improve framerate for expensive graphs.
                     if(precisionDivisor<1) precisionDivisor=1;
                     if(precisionDivisor>1.25)precisionDivisor+=precisionDivisor;
@@ -2030,6 +2030,8 @@ int main(int, char**)
                         }
                     }
 
+                    double minimumPrecision{(graphsEquations.size()/2.f+1)};
+                    // Recalculate a graph when too many points have been saved for it... or recalculate the graph of recalculateGraphIndex. Only one graph per frame being recalculated is intentional.
                     if(
                         (
                             downsizeGraphIndex!=static_cast<size_t>(-1) && 
@@ -2038,7 +2040,7 @@ int main(int, char**)
                             graphsPoints.first.size()<MANY_GRAPHS && 
                             timeStationary<HIGH_PRECISION_DRAW_DELAY
                         ) || recalculateGraphIndex!=static_cast<size_t>(-1)
-                    ) // Recalculate a graph when too many points have been saved for it... or recalculate the graph of recalculateGraphIndex. Only one graph per frame being recalculated is intentional.
+                    )
                     {
                         if(recalculateGraphIndex!=static_cast<size_t>(-1)) downsizeGraphIndex=recalculateGraphIndex;
                         nonEmptyGraphEquation=graphsEquations.at(downsizeGraphIndex);
@@ -2054,14 +2056,9 @@ int main(int, char**)
                         graphsPoints.first.at(downsizeGraphIndex)=lessetB::globals::points.first;
                         graphsPoints.second.at(downsizeGraphIndex)=lessetB::globals::points.second;       
                     }
-
-                    double minimumPrecision{(graphsEquations.size()/2.f+1)};
-
-
-
-                    if(timeStationary==0 && graphsPoints.first.size()<MANY_GRAPHS && !zoomedIn) // Prepend/Append to graph
+                    // Prepend/Append to graph
+                    else if(timeStationary==0 && graphsPoints.first.size()<MANY_GRAPHS && !zoomedIn) 
                     {
-
                         const double dXMin{limits.X.Min-prevLimits.X.Min};
                         const double dXMinScreenProportion{abs(dXMin)/(limits.X.Max-limits.X.Min)};
 
@@ -2105,9 +2102,8 @@ int main(int, char**)
                             }
 
                     }
-
-
-                    if(timeStationary==0 && graphsPoints.first.size()<MANY_GRAPHS && zoomedIn) // Recalculate when zooming in
+                    // Recalculate when zooming in
+                    else if(timeStationary==0 && graphsPoints.first.size()<MANY_GRAPHS && zoomedIn)
                     {
                         graphsPoints.first.clear();
                         graphsPoints.second.clear();
@@ -2133,9 +2129,8 @@ int main(int, char**)
                             graphsPoints.second.at(graphsPoints.second.size()-1).reserve(maxIndividualGraphPoints); 
                         }
                     }
-                
-
-                    if(timeStationary==HIGH_PRECISION_DRAW_DELAY || recalculateGraphs) // Recalculate at a high precision
+                    // Recalculate at a high precision
+                    else if(timeStationary==HIGH_PRECISION_DRAW_DELAY || recalculateGraphs)
                     {
                         recalculateGraphs=false;
                         if(graphsEquations.size()>=MANY_GRAPHS && drawMany_Graphs || graphsEquations.size()<MANY_GRAPHS)
@@ -2150,12 +2145,10 @@ int main(int, char**)
 
                                 graphsPoints.first.emplace_back(lessetB::globals::points.first);
                                 graphsPoints.second.emplace_back(lessetB::globals::points.second);
-                                graphsPoints.first.at(graphsPoints.first.size()-1).reserve(maxIndividualGraphPoints);
-                                graphsPoints.second.at(graphsPoints.second.size()-1).reserve(maxIndividualGraphPoints);
                             }
                         }
                     } 
-                
+                    bool hasShownMousePointText{};
                     for(size_t j{}; j<graphsPoints.first.size(); j++) // Disconnect discontinuities and hand points to ImPlot
                     {
                         
@@ -2204,13 +2197,14 @@ int main(int, char**)
 
                         if(timeStationary<HIGH_PRECISION_DRAW_DELAY) ImPlot::PlotLine(graphsEquations.at(j).c_str(), &(*graphsPoints.first.at(j).cbegin()), &(*graphsPoints.second.at(j).cbegin()), graphsPoints.second.at(j).size(),spec);
                         else if((drawMany_Graphs && graphsEquations.size()>=MANY_GRAPHS) || graphsEquations.size()<MANY_GRAPHS) ImPlot::PlotLine(graphsEquations.at(j).c_str(), &(*graphsPoints.first.at(j).cbegin()), &(*graphsPoints.second.at(j).cbegin()), graphsPoints.second.at(j).size(),spec);
-                    
+                        
                         bool textAbove{};
                         bool hasShownPoint{false};
                         double xPreviousPointMarked{-INFINITY};
                         size_t increment = 3;
-                        if(timeStationary>=100) increment=9;
-                        if(markSpecialPoints && graphsEquations.size()<15)
+                        
+                        if(timeStationary>=100) increment=6;
+                        if(markSpecialPoints && graphsEquations.size()<25 && !IsPlotHidden() && ImPlot::IsPlotHovered())
                             for(size_t i{increment}; i<graphsPoints.first.at(j).size()-20; i+=increment)
                             {
                                 if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i)) < abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i+increment)) &&
@@ -2225,54 +2219,79 @@ int main(int, char**)
                                     if(abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/5)
                                     {
                                         ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
-                                        if(abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/20)
+                                        if(abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/20 && !hasShownMousePointText)
                                         {
-                                            std::string coordsFormatted= "x: " + std::to_string(graphsPoints.first.at(j).at(i))+ "\ny: " + std::to_string(graphsPoints.second.at(j).at(i));
-                                            ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(80,20));
+                                            hasShownMousePointText=true;
+                                            std::string coordsFormatted= graphsEquations.at(j)+"\n(" +  std::to_string(graphsPoints.first.at(j).at(i))+ "; " + std::to_string(graphsPoints.second.at(j).at(i)) + ")";
+                                            ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(80,30));
                                         }
                                     }
                                 }
 
                                 if(((graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i+increment) && graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i-increment)) ||
                                     (graphsPoints.second.at(j).at(i)>graphsPoints.second.at(j).at(i+increment) && graphsPoints.second.at(j).at(i)>graphsPoints.second.at(j).at(i-increment))) &&
-                                (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50))
+                                    (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50))
                                 {
-                                    xPreviousPointMarked=graphsPoints.first.at(j).at(i);
-                                    ImPlotSpec spec{};
-                                    spec.Flags=ImPlotItemFlags_NoFit;
-                                    spec.MarkerLineColor=ImVec4{0,0,0,1};
-                                    spec.MarkerFillColor=ImVec4(1,1,1,1);
-                                    ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
-                                    
-                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
-                                    abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
+                                    bool hasNAN{};
+                                    for(size_t k{i}; k<i+increment; k++)
                                     {
-                                        if(textAbove) textAbove=false;
-                                        else textAbove=true;
-                                        std::string coordsFormatted = std::to_string(graphsPoints.first.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES)+ '\n' + std::to_string(graphsPoints.second.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES);
-                                        ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(0,60-textAbove*120));
+                                        if(graphsPoints.second.at(j).at(k)!=graphsPoints.second.at(j).at(k))
+                                        {
+                                            hasNAN=true;
+                                            break;
+                                        }
+                                    }
+                                    if(!hasNAN)
+                                    {
+                                        xPreviousPointMarked=graphsPoints.first.at(j).at(i);
+                                        ImPlotSpec spec{};
+                                        spec.Flags=ImPlotItemFlags_NoFit;
+                                        spec.MarkerLineColor=ImVec4{0,0,0,1};
+                                        spec.MarkerFillColor=ImVec4(1,1,1,1);
+                                        ImPlot::PlotScatter("##", &graphsPoints.second.at(j).at(i), 1, 0,graphsPoints.first.at(j).at(i),spec);
+                                        
+                                        if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                        abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
+                                        {
+                                            if(textAbove) textAbove=false;
+                                            else textAbove=true;
+                                            std::string coordsFormatted = std::to_string(graphsPoints.first.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES)+ '\n' + std::to_string(graphsPoints.second.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES);
+                                            ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),graphsPoints.second.at(j).at(i),ImVec2(0,60-textAbove*120));
+                                        }
                                     }
                                 }
                                 else if(((graphsPoints.second.at(j).at(i)>0 && graphsPoints.second.at(j).at(i+increment)<0) ||
                                         (graphsPoints.second.at(j).at(i)<0 && graphsPoints.second.at(j).at(i+increment)>0)) &&
                                         (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50))
                                 {
-                                    xPreviousPointMarked=graphsPoints.first.at(j).at(i);
-                                    ImPlotSpec spec{};
-                                    spec.Flags=ImPlotItemFlags_NoFit;
-                                    spec.MarkerLineColor=ImVec4{0,0,0,1};
-                                    spec.MarkerFillColor=ImVec4(1,1,1,1);
-                                    const float zero=0;
-                                    ImPlot::PlotScatter("##", &zero, 1, 0,graphsPoints.first.at(j).at(i),spec);
-                                    
-                                    if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
-                                    abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
+                                    bool hasNAN{};
+                                    for(size_t k{i}; k<i+increment; k++)
                                     {
-                                        if(textAbove) textAbove=false;
-                                        else textAbove=true;
-                                        std::string coordsFormatted = std::to_string(graphsPoints.first.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES)+ "\n0";
-                                        ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),0,ImVec2(0,60-textAbove*120));
-                                    }                                        
+                                        if(graphsPoints.second.at(j).at(k)!=graphsPoints.second.at(j).at(k))
+                                        {
+                                            hasNAN=true;
+                                            break;
+                                        }
+                                    }
+                                    if(!hasNAN)
+                                    {
+                                        xPreviousPointMarked=graphsPoints.first.at(j).at(i);
+                                        ImPlotSpec spec{};
+                                        spec.Flags=ImPlotItemFlags_NoFit;
+                                        spec.MarkerLineColor=ImVec4{0,0,0,1};
+                                        spec.MarkerFillColor=ImVec4(1,1,1,1);
+                                        const float zero=0;
+                                        ImPlot::PlotScatter("##", &zero, 1, 0,graphsPoints.first.at(j).at(i),spec);
+                                        
+                                        if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i))<(limits.X.Max-limits.X.Min)/10 &&
+                                        abs(ImPlot::GetPlotMousePos().y-graphsPoints.second.at(j).at(i))<(limits.Y.Max-limits.Y.Min)/10)
+                                        {
+                                            if(textAbove) textAbove=false;
+                                            else textAbove=true;
+                                            std::string coordsFormatted = std::to_string(graphsPoints.first.at(j).at(i)).substr(0,std::to_string(graphsPoints.first.at(j).at(i)).size()-TRIMMEDDECIMALPLACES)+ "\n0";
+                                            ImPlot::PlotText(coordsFormatted.c_str(),graphsPoints.first.at(j).at(i),0,ImVec2(0,60-textAbove*120));
+                                        }             
+                                    }                           
                                 }
 
                         }
@@ -2375,13 +2394,12 @@ int addClosingParentheses(std::string &equation)
     return unclosedParentheses;
 }
 
-bool containsVariable(const std::string &equation)
+bool IsPlotHidden()
 {
-    if(equation.length()>=1 && equation.at(0)=='x') return true;
-    for(int i{}; i<equation.length(); i++)
+    ImPlotContext &imPlotContext = *GImPlot;
+    if(imPlotContext.PreviousItem)
     {
-        if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) return true;
-        if(i>1&&equation.at(i)=='x' && equation.find("mix",i-2)!=i-2 && equation.find("max",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) return true;
+        return !imPlotContext.PreviousItem->Show;
     }
-    return false;
+    else return false;
 }
