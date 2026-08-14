@@ -1,8 +1,8 @@
 # LessetG
 
-A calculator. With a GUI. That graphs. Stylable, too. With a military grade scripting language. 
-And like, >64 functions. And variables. And macros. And a whole lotta jank.
-This is not a professional application, and should not be treated as such.
+Calculator with...
+
+Order of operations! Constants! Variables! Macros! Over 80 functions! Table calculations! Up to 100 decimal places of precision! Enough operators to make your head spin! Styling! Military grade scripting! Graphing! Jank!
 
 <img src="/Assets/graph.png" height="75%" width="75%">
 

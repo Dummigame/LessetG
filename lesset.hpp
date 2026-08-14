@@ -1,3 +1,4 @@
+#include <boost/multiprecision/fwd.hpp>
 #ifdef LESSET
     #error "Only include lesset.hpp once."
 #endif
@@ -30,7 +31,7 @@ inline std::mt19937 randomMt(randev());
 
 #define MAXOUTPUTPRECISION 100
 
-#define MAXKEYWORDLENGTH 6 // Change this when adding long keywords
+#define MAXKEYWORDLENGTH 7 // Change this when adding long keywords
 
 enum drawPos
 {
@@ -69,6 +70,7 @@ enum class token_t
     GCF,
     LCM,
     RNDINT,
+    ROUND,
     RNDSEL,
     ABS,
     MAX,
@@ -168,9 +170,10 @@ namespace globals
     inline std::pair<std::vector<double>,std::vector<double>> points; 
     inline std::string previousResult;
     inline std::string errorMessage;
-    inline bool error{}; // 
+    inline bool error{}; // Has an error occured?
     inline bool passedCalculationsFile{};
     inline bool passedInAsArg{};
+    inline int decimalPrecision{100};
 
     inline std::unordered_map<std::string, std::vector<Token>> tokenMemory;
     
@@ -236,6 +239,7 @@ namespace globals
         {"ans", token_t::CONSTANT},
 
         {"sinc", token_t::FUNCTION},
+        {"sinc^2", token_t::FUNCTION},
         {"exp", token_t::FUNCTION},
         {"sign", token_t::FUNCTION},
         {"sqrt", token_t::FUNCTION},
@@ -286,6 +290,34 @@ namespace globals
         {"x", token_t::VARIABLE},
         {"n", token_t::SUMVAR},
 
+        {"sin^2", token_t::FUNCTION},
+        {"cos^2", token_t::FUNCTION},
+        {"tan^2", token_t::FUNCTION},
+        {"sinh^2", token_t::FUNCTION},
+        {"cosh^2", token_t::FUNCTION},
+        {"tanh^2", token_t::FUNCTION},
+
+        {"asin^2", token_t::FUNCTION},
+        {"acos^2", token_t::FUNCTION},
+        {"atan^2", token_t::FUNCTION},
+        {"asinh^2", token_t::FUNCTION},
+        {"acosh^2", token_t::FUNCTION},
+        {"atanh^2", token_t::FUNCTION},
+
+        {"sec^2", token_t::FUNCTION},
+        {"csc^2", token_t::FUNCTION},
+        {"cot^2", token_t::FUNCTION},
+        {"sech^2", token_t::FUNCTION},
+        {"csch^2", token_t::FUNCTION},
+        {"coth^2", token_t::FUNCTION},
+
+        {"asec^2", token_t::FUNCTION},
+        {"acsc^2", token_t::FUNCTION},
+        {"acot^2", token_t::FUNCTION},
+        {"asech^2", token_t::FUNCTION},
+        {"acsch^2", token_t::FUNCTION}, //aschhschhshuhuschush^2
+        {"acoth^2", token_t::FUNCTION},
+
     };
 
     const std::unordered_map<std::string, token_t> unaryOperations
@@ -323,6 +355,7 @@ namespace globals
     const std::unordered_map<std::string, token_t> functions
     {
         {"sinc", token_t::FUNCTION},
+        {"sinc^2", token_t::FUNCTION},
         {"exp", token_t::FUNCTION},
         {"sign", token_t::FUNCTION},
         {"sqrt", token_t::FUNCTION},
@@ -356,6 +389,34 @@ namespace globals
         {"asech", token_t::FUNCTION},
         {"acsch", token_t::FUNCTION}, //aschhschhshuhuschush
         {"acoth", token_t::FUNCTION},
+
+        {"sin^2", token_t::FUNCTION},
+        {"cos^2", token_t::FUNCTION},
+        {"tan^2", token_t::FUNCTION},
+        {"sinh^2", token_t::FUNCTION},
+        {"cosh^2", token_t::FUNCTION},
+        {"tanh^2", token_t::FUNCTION},
+
+        {"asin^2", token_t::FUNCTION},
+        {"acos^2", token_t::FUNCTION},
+        {"atan^2", token_t::FUNCTION},
+        {"asinh^2", token_t::FUNCTION},
+        {"acosh^2", token_t::FUNCTION},
+        {"atanh^2", token_t::FUNCTION},
+
+        {"sec^2", token_t::FUNCTION},
+        {"csc^2", token_t::FUNCTION},
+        {"cot^2", token_t::FUNCTION},
+        {"sech^2", token_t::FUNCTION},
+        {"csch^2", token_t::FUNCTION},
+        {"coth^2", token_t::FUNCTION},
+
+        {"asec^2", token_t::FUNCTION},
+        {"acsc^2", token_t::FUNCTION},
+        {"acot^2", token_t::FUNCTION},
+        {"asech^2", token_t::FUNCTION},
+        {"acsch^2", token_t::FUNCTION}, //aschhschhshuhuschush^2
+        {"acoth^2", token_t::FUNCTION},
 
         {"ln", token_t::FUNCTION},
         {"abs", token_t::FUNCTION},
@@ -391,6 +452,7 @@ namespace globals
         {"mix", token_t::MIX},
         {"if", token_t::IF},
         {"sum", token_t::SUM},
+        {"round", token_t::ROUND},
     };
 
     const std::unordered_map<std::string, std::string> constants
@@ -531,6 +593,7 @@ class Token
         {
             tokenValue.push_back(input.at(i));
         }
+        if(offset>=input.length()) return token_t::INVALID;
         return type;
     }
     ///////////////////////////////////////////////
@@ -574,7 +637,7 @@ class Token
         else if(type==token_t::SUBEXPR || type==token_t::SUM ||
                 type==token_t::ROOT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS || type==token_t::IF ||
                 type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DIFF || type==token_t::MIX ||
-                type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL) return tokenCategory_t::SUBEXPR;
+                type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL || type==token_t::ROUND) return tokenCategory_t::SUBEXPR;
 
         else if(type==token_t::FUNCTION) return tokenCategory_t::FUNCTION;
 
@@ -647,6 +710,7 @@ template <typename T = cpp_dec_float_100> T evaluateMax(const Token &arg, const 
 template <typename T = cpp_dec_float_100> T evaluateLeast(const Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateGcf(const Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLcm(const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateRound( const Token &arg, const T xValue);
 
 template <typename T = cpp_dec_float_100> T evaluateUnary(Token&, Token&, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateBinary(Token&, Token&, Token&, const T xValue);
@@ -1109,6 +1173,16 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             }
         }
 
+        if(globals::decimalPrecision!=100 && isNumber(result))
+        {
+            std::ostringstream oss;
+            oss.precision(globals::decimalPrecision);
+            oss<<static_cast<cpp_dec_float_100>(result);
+            {
+                result=oss.str();
+            }
+        }
+
 
         if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile) && !options.graph)
         {
@@ -1312,6 +1386,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall);
         else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall,2);
         else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall,3);
+        else if(!inFunctionCall && input.find("round(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"round",i,inFunctionCall);
 
         // Parse Subexpression
         if(currentToken=="" && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1501,12 +1576,13 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         if(tokens.at(i).value()=="-" &&
         tokens.at(i-1).type()!=token_t::BINARYOP &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::ASSIGNMENT &&
-        tokens.at(i-1).type()!=token_t::UNARYOP &&
+        (tokens.at(i-1).type()==token_t::UNARYOP || tokens.at(i-1).value()!="-") &&
         tokens.at(i-1).type()!=token_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("+"));
 
         // Delete unary plus since it does jack
         if(tokens.at(i).value()=="+" &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::NUMBER &&
+        (tokens.at(i-1).type()!=token_t::UNARYOP || tokens.at(i-1).value()=="-") &&
         tokens.at(i-1).typeCategory()!=tokenCategory_t::SUBEXPR) tokens.erase(tokens.begin()+i--);
     }
 
@@ -1609,6 +1685,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                         case token_t::MIN:     evaluatedSubexpr = evaluateMin(tokens.at(i), xValue); break;
                         case token_t::RNDSEL:  evaluatedSubexpr = evaluateRndsel(tokens.at(i), xValue); break;
                         case token_t::RNDINT:  evaluatedSubexpr = evaluateRndint(tokens.at(i), xValue); break;
+                        case token_t::ROUND:  evaluatedSubexpr = evaluateRound(tokens.at(i), xValue); break;
                         case token_t::ABS:     evaluatedSubexpr = evaluateAbs(tokens.at(i), xValue, sumVar); break;
                         case token_t::ROOT:    evaluatedSubexpr = evaluateRoot(tokens.at(i), xValue); break;
                         case token_t::LOG:     evaluatedSubexpr = evaluateLog(tokens.at(i), xValue); break;
@@ -2178,6 +2255,31 @@ T evaluateIf( const Token &arg, const T xValue)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T evaluateRound( const Token &arg, const T xValue)
+{
+    std::vector<T> argVals;
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
+    if(argVals.size()==0) return NAN;
+    if(argVals.size()==1) return round(argVals.at(0));
+
+    if(argVals.at(1)>100) argVals.at(1)=100;
+    else if(argVals.at(1)<0) argVals.at(1)=0;
+
+    if(argVals.at(1)==0) return round(argVals.at(0));
+    
+    std::ostringstream oss;
+    oss.precision(static_cast<size_t>(argVals.at(1)));
+    oss<<argVals.at(0);
+    if constexpr (std::is_same_v<T,cpp_dec_float_100>)
+    {
+        return static_cast<cpp_dec_float_100>(oss.str());
+    }
+    else return std::stold(oss.str());
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2230,19 +2332,6 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
     T numberLeft{numberStringLeft.number(xValue)};
     T numberRight{numberStringRight.number(xValue)};
 
-    if(operation.value()=="<") return numberLeft<numberRight;
-    if(operation.value()==">") return numberLeft>numberRight;    
-    if(operation.value()=="=") return numberLeft==numberRight;
-    if(operation.value()==">=") return numberLeft>=numberRight;
-    if(operation.value()=="<=") return numberLeft<=numberRight;  
-    if(operation.value()=="=!") return numberLeft!=numberRight;
-    if(operation.value()=="OR") return numberLeft||numberRight;
-    if(operation.value()=="AND") return numberLeft&&numberRight;
-    if(operation.value()=="XOR") return (!numberLeft)!=(!numberRight);
-    if(operation.value()=="NOR") return (numberLeft==0)&&(numberRight==0);
-    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::options.aroundTruthinessLeniency;
-    
-
     if(operation.value()=="+") return numberLeft+numberRight;
     else if(operation.value()=="*" || operation.value()=="h*") return numberLeft*numberRight;
     else if(operation.value()=="/") return numberLeft/numberRight;
@@ -2264,6 +2353,19 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
         return pow(numberLeft, numberRight);
     }
     else if(operation.value()=="mod" || operation.value()=="%") return fmod(numberLeft,numberRight);
+
+    if(operation.value()=="<") return numberLeft<numberRight;
+    if(operation.value()==">") return numberLeft>numberRight;    
+    if(operation.value()=="=") return numberLeft==numberRight;
+    if(operation.value()==">=") return numberLeft>=numberRight;
+    if(operation.value()=="<=") return numberLeft<=numberRight;  
+    if(operation.value()=="=!") return numberLeft!=numberRight;
+    if(operation.value()=="OR") return numberLeft||numberRight;
+    if(operation.value()=="AND") return numberLeft&&numberRight;
+    if(operation.value()=="XOR") return (!numberLeft)!=(!numberRight);
+    if(operation.value()=="NOR") return (numberLeft==0)&&(numberRight==0);
+    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::options.aroundTruthinessLeniency;
+
     else if(operation.value()=="nPk") return (tgamma(numberLeft+1)/tgamma(numberLeft-numberRight+1));
     else if(operation.value()=="nCk") return (tgamma(numberLeft+1)/(tgamma(numberRight+1)*tgamma(numberLeft-numberRight+1)));
 
@@ -2289,36 +2391,6 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
     }
 
     if(operation.value()=="sqrt") return sqrt(number);
-    if(operation.value()=="cbrt") return cbrt(number);
-    if(operation.value()=="qtrt") return pow(number,0.25);
-    
-    if(operation.value()=="sinc")
-    {
-        if(number!=0) return sin(number)/number;
-        else return 1;
-    }
-
-    if(operation.value()=="ReLU") return (number+abs(number))/2;
-
-    if(operation.value()=="sstep")
-    {
-        if(number>1) return 1;
-        else if(number<0) return 0;
-        return pow(number,2)*(3-2*number);
-    }
-
-    if(operation.value()=="prime")
-    {
-        number=floor(number);
-        if(number<=1) return false;
-        else if(number == 2 || number == 3) return true;
-        else if(fmod(number,2)==0 || fmod(number,3)==0) return false;
-        for(size_t i{5}; i*i<=number; i+=6)
-        {
-            if(fmod(number,i) == 0 || fmod(number,i+2) == 0) return false;
-        }
-        return true;
-    }
 
     if(operation.value()=="!")
     {
@@ -2378,6 +2450,42 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
     // if(operation.value()=="log10") return log10(number);
     if(operation.value()=="exp") return pow(e.number(xValue),number);
 
+    if(operation.value()=="cbrt") return cbrt(number);
+    if(operation.value()=="qtrt") return pow(number,0.25);
+    
+    if(operation.value()=="sinc")
+    {
+        if(number!=0) return sin(number)/number;
+        else return 1;
+    }    
+    if(operation.value()=="sinc^2")
+    {
+        if(number!=0) return pow(sin(number)/number,2);
+        else return 1;
+    }
+
+    if(operation.value()=="ReLU") return (number+abs(number))/2;
+
+    if(operation.value()=="sstep")
+    {
+        if(number>1) return 1;
+        else if(number<0) return 0;
+        return pow(number,2)*(3-2*number);
+    }
+
+    if(operation.value()=="prime")
+    {
+        number=floor(number);
+        if(number<=1) return false;
+        else if(number == 2 || number == 3) return true;
+        else if(fmod(number,2)==0 || fmod(number,3)==0) return false;
+        for(size_t i{5}; i*i<=number; i+=6)
+        {
+            if(fmod(number,i) == 0 || fmod(number,i+2) == 0) return false;
+        }
+        return true;
+    }
+    
     if(operation.value()=="!!")
     {
         if(number<0) return NAN;
@@ -2400,6 +2508,39 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
         }
         if(number<=3) return number;
     }
+
+    // Why do these even exist.
+    if(operation.value()=="sin^2") return pow(sin(number),2);
+    if(operation.value()=="cos^2") return pow(cos(number),2);
+    if(operation.value()=="tan^2") return pow(tan(number),2);
+
+    if(operation.value()=="sec^2") return pow(1/cos(number),2);
+    if(operation.value()=="csc^2") return pow(1/sin(number),2);
+    if(operation.value()=="cot^2") return pow(1/tan(number),2);
+
+    if(operation.value()=="asec^2") return pow(acos(1/number),2);
+    if(operation.value()=="acsc^2") return pow(asin(1/number),2);
+    if(operation.value()=="acot^2") return pow(atan(1/number),2);
+
+    if(operation.value()=="sinh^2") return pow(sinh(number),2);
+    if(operation.value()=="cosh^2") return pow(cosh(number),2);
+    if(operation.value()=="tanh^2") return pow(tanh(number),2);
+
+    if(operation.value()=="asinh^2") return pow(asinh(number),2);
+    if(operation.value()=="acosh^2") return pow(acosh(number),2);
+    if(operation.value()=="atanh^2") return pow(atanh(number),2);
+
+    if(operation.value()=="asech^2") return pow(acosh(1/number),2);
+    if(operation.value()=="acsch^2") return pow(asinh(1/number),2);
+    if(operation.value()=="acoth^2") return pow(atanh(1/number),2);
+
+    if(operation.value()=="sech^2") return pow(1/cosh(number),2);
+    if(operation.value()=="csch^2") return pow(1/sinh(number),2);
+    if(operation.value()=="coth^2") return pow(1/tanh(number),2);
+
+    if(operation.value()=="asin^2") return pow(asin(number),2);
+    if(operation.value()=="acos^2") return pow(acos(number),2);
+    if(operation.value()=="atan^2") return pow(atan(number),2);
 
     return result;
 }

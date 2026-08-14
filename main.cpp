@@ -1344,6 +1344,10 @@ int main(int, char**)
                         options.prioritizeImplicitMultiplication=followImplicitMultiplicationPriorityConvention;
                         ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
 
+                        ImGui::SetNextItemWidth(350);
+                        ImGui::DragInt("##", &lessetB::globals::decimalPrecision,0.2,1,100,"Decimal places in output: %d",ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::SetItemTooltip("Changes amount of decimal places shown in output.");
+
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
@@ -1562,6 +1566,7 @@ int main(int, char**)
                             
                             ImGui::EndMenu();
                         }
+                        ImGui::SetItemTooltip("Squared variants (sin^2) exist too.");
 
                         if(ImGui::BeginMenu("Hyperbolic"))
                         {
@@ -1603,6 +1608,7 @@ int main(int, char**)
                             
                             ImGui::EndMenu();
                         }
+                        ImGui::SetItemTooltip("Squared variants (sinh^2) exist too.");
 
                         if(ImGui::BeginMenu("Calculus"))
                         {    
@@ -1637,6 +1643,9 @@ int main(int, char**)
               
                             if(ImGui::MenuItem("round")) equation.append("round");
                             ImGui::SetItemTooltip("Rounds number to nearest integer.");
+
+                            if(ImGui::MenuItem("round()")) equation.append("round(expr, decimal places)");
+                            ImGui::SetItemTooltip("Rounds number to however many decimal places specified.");
 
                             if(ImGui::MenuItem("bround")) equation.append("bround");
                             ImGui::SetItemTooltip("Rounds number to nearest even integer (Banker's Rounding).");
@@ -1742,7 +1751,7 @@ int main(int, char**)
                         ImGui::SetItemTooltip("Returns true if left greater than or equal to right. (>=)");
 
                         if(ImGui::MenuItem("=")) equation.append("=");
-                        ImGui::SetItemTooltip("Returns true if left is exactly equal to right.");
+                        ImGui::SetItemTooltip("Returns true if left is exactly equal to right.\nThis can often be falsified by floating point inaccuracy.");
 
                         if(ImGui::MenuItem("≠")) equation.append("≠");
                         ImGui::SetItemTooltip("Returns true if left not equal to right. (=!)");
