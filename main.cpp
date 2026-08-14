@@ -1135,7 +1135,7 @@ int main(int, char**)
                     
                         if(ImGui::Button("Add"))
                         {
-                            graphsEquations.push_back(std::string(std::to_string(graphsEquations.size()+1)+"x"));
+                            graphsEquations.push_back(std::string(std::to_string(graphsEquations.size()+1)));
                             recalculateGraphIndex=graphsEquations.size()-1;
                             graphsPoints.first.emplace_back(std::vector<double>());
                             graphsPoints.second.emplace_back(std::vector<double>());
@@ -1490,8 +1490,8 @@ int main(int, char**)
                             if(ImGui::MenuItem("∜")) equation.append("∜");
                             ImGui::SetItemTooltip("Quartic root (qtrt) function.");
 
-                            if(ImGui::MenuItem("root()")) equation.append("root(enumerator,denominator)");
-                            ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
+                            if(ImGui::MenuItem("root()")) equation.append("root(denominator,enumerator)");
+                            ImGui::SetItemTooltip("Nth root function, denominator on the left, enumerator right.\nMay be called with one argument for sqrt.");
            
                             if(ImGui::MenuItem("ln")) equation.append("ln");
                             ImGui::SetItemTooltip("Log with base ℯ.");
@@ -1638,8 +1638,8 @@ int main(int, char**)
 
                         if(ImGui::BeginMenu("Number Theory"))
                         {
-                            if(ImGui::MenuItem("root()")) equation.append("root(enumerator,denominator)");
-                            ImGui::SetItemTooltip("Nth root function, enumerator on the right, denominator left.\nMay be called with one argument for sqrt.");
+                            if(ImGui::MenuItem("root()")) equation.append("root(denominator,enumerator)");
+                            ImGui::SetItemTooltip("Nth root function, denominator on the left, enumerator right.\nMay be called with one argument for sqrt.");
               
                             if(ImGui::MenuItem("round")) equation.append("round");
                             ImGui::SetItemTooltip("Rounds number to nearest integer.");

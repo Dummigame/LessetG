@@ -43,9 +43,9 @@ enum drawPos
 enum pass
 {
     SUBEXPRESSIONS,
+    FUNCTIONS,
     UNARYOPS,
     EXPONENTIATION,
-    FUNCTIONS,
     UNARYMINUS,
     MULTIPLICATIONIMPLICIT,
     MULTIPLICATION,
@@ -1064,6 +1064,15 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                         else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
                     }
                 }
+                if(globals::decimalPrecision!=100 && isNumber(resultAsOSStream.str()))
+                {
+                    // x-remainder(x,1/pow(10,decimalplaces))
+                    std::ostringstream oss;
+                    oss.precision(100);
+                    oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+resultAsOSStream.str()+','+std::to_string(globals::decimalPrecision))), NAN);
+                    resultAsOSStream.str("");
+                    resultAsOSStream<<oss.str();
+                }
                 result+=std::to_string(i);
                 for(size_t spaces{}; spaces<std::to_string(totalCalculations).length()-std::to_string(i).length(); spaces++) result+="  ";
                 result+=": (" + xValueAsOSStream.str() + " ; " + resultAsOSStream.str()+")\n";
@@ -1175,12 +1184,10 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
         if(globals::decimalPrecision!=100 && isNumber(result))
         {
+            // Total hack. I don't care though.
             std::ostringstream oss;
-            oss.precision(globals::decimalPrecision);
-            oss<<static_cast<cpp_dec_float_100>(result);
-            {
-                result=oss.str();
-            }
+            oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+result+','+std::to_string(globals::decimalPrecision))), NAN);
+            result=oss.str();
         }
 
 
@@ -2267,19 +2274,13 @@ T evaluateRound( const Token &arg, const T xValue)
 
     if(argVals.at(1)>100) argVals.at(1)=100;
     else if(argVals.at(1)<0) argVals.at(1)=0;
-
-    if(argVals.at(1)==0) return round(argVals.at(0));
+    if(argVals.at(1)<0.5) return round(argVals.at(0));
     
-    std::ostringstream oss;
-    oss.precision(static_cast<size_t>(argVals.at(1)));
-    oss<<argVals.at(0);
-    if constexpr (std::is_same_v<T,cpp_dec_float_100>)
-    {
-        return static_cast<cpp_dec_float_100>(oss.str());
-    }
-    else return std::stold(oss.str());
+    argVals.at(1)=round(argVals.at(1));
+    return argVals.at(0)-remainder(argVals.at(0),1/pow(10,round(argVals.at(1))));
 }
 
+// x-remainder(x,1/pow(10,round(decimalplaces)))
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2352,7 +2353,11 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
         }
         return pow(numberLeft, numberRight);
     }
-    else if(operation.value()=="mod" || operation.value()=="%") return fmod(numberLeft,numberRight);
+    else if(operation.value()=="mod" || operation.value()=="%")
+    {
+        if(numberLeft<=0 && numberRight>=0 || numberLeft>=0 && numberRight<=0) return fmod(numberLeft,numberRight)+numberRight;
+        else return fmod(numberLeft,numberRight);
+    }
 
     if(operation.value()=="<") return numberLeft<numberRight;
     if(operation.value()==">") return numberLeft>numberRight;    
