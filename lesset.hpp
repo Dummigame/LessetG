@@ -433,6 +433,116 @@ namespace globals
         {"6.02214076e+23","Na" },
     };
 
+    const std::unordered_map<std::string, size_t> OpToID
+    {
+        {"+",    0},
+        {"*",    1},
+        {"/",    2},
+        {":",    2},
+        {"h*",    3},
+        {"^",    4},
+        {"%",    5},
+        {"<",    6},
+        {">",    7},
+        {"=",    8},
+        {"mod",    5},
+        {"fmod",    10},
+        {"rmod",    11},
+        {"nPk",    12},
+        {"nCk",    13},
+        {"**",    4},
+        {"AND",    15},
+        {"XOR",    16},
+        {"AROUND",    17},
+        {"NOR",    18},
+        {"OR",    19},
+        {"=!",    20},
+        {">=",    21},
+        {"<=",    22},
+
+        {"!", 23},
+        {"-", 24},
+        {"!!", 25},
+
+        {"sinc", 26},
+        {"sinc^2", 27},
+        {"exp", 28},
+        {"sign", 29},
+        {"sqrt", 30},
+        {"cbrt", 31},
+        {"qtrt", 32},
+
+        {"sin", 33},
+        {"cos", 34},
+        {"tan", 35},
+        {"sinh", 36},
+        {"cosh", 37},
+        {"tanh", 38},
+
+        {"asin", 39},
+        {"acos", 40},
+        {"atan", 41},
+        {"asinh", 42},
+        {"acosh", 43},
+        {"atanh", 44},
+
+        {"sec", 45},
+        {"csc", 46},
+        {"cot", 47},
+        {"sech", 48},
+        {"csch", 49},
+        {"coth", 50},
+
+        {"asec", 51},
+        {"acsc", 52},
+        {"acot", 53},
+        {"asech", 54},
+        {"acsch", 55}, //aschhschhshuhuschush
+        {"acoth", 56},
+        {"prime", 57},
+
+        {"ln", 58},
+        {"ln^2", 59},
+        {"abs", 60},
+        {"floor", 61},
+        {"trunc", 62},
+        {"ceil", 63},
+        {"bround", 64},
+        {"round", 65},
+        {"sat", 66},
+        {"ReLU", 67},
+        {"sstep", 68},
+        {"lgam", 69},
+        {"gam", 70},
+
+        {"sin^2", 71},
+        {"cos^2", 72},
+        {"tan^2", 73},
+        {"sinh^2", 74},
+        {"cosh^2", 75},
+        {"tanh^2", 76},
+
+        {"asin^2", 77},
+        {"acos^2", 78},
+        {"atan^2", 79},
+        {"asinh^2", 80},
+        {"acosh^2", 81},
+        {"atanh^2", 82},
+
+        {"sec^2", 83},
+        {"csc^2", 84},
+        {"cot^2", 85},
+        {"sech^2", 86},
+        {"csch^2", 87},
+        {"coth^2", 88},
+
+        {"asec^2", 89},
+        {"acsc^2", 90},
+        {"acot^2", 91},
+        {"asech^2", 92},
+        {"acsch^2", 93}, //aschhschhshuhuschush^2
+        {"acoth^2", 94},
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1342,10 +1452,10 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         }
 
         // Parse MultiArg Functions
-        for(size_t j{MAXKEYWORDLENGTH}; j>2 && !inFunctionCall; j--)
+        for(size_t j{MAXKEYWORDLENGTH}; !inFunctionCall; j--)
         {
             if(j>input.length()-i) j=input.length()-i;
-            if(j<=2) break;
+            if(j<2) break;
             token_t type{token_t::INVALID};
             size_t offset{};
             if(globals::multiArgFunctions.find(input.substr(i,j))!=globals::multiArgFunctions.end())
@@ -2269,49 +2379,55 @@ template <typename T>
 T evaluateBinary(Token &numberTokenLeft, Token &operation, Token &numberTokenRight, const T xValue)
 {
     if(globals::error) return NAN;
-    T numberLeft{numberTokenLeft.number(xValue)};
-    T numberRight{numberTokenRight.number(xValue)};
+    T x{numberTokenLeft.number(xValue)};
+    T y{numberTokenRight.number(xValue)};
+    if(globals::OpToID.find(operation.value()) == globals::OpToID.end()) return NAN;
+    size_t id = globals::OpToID.find(operation.value())->second;
 
-    if(operation.value()=="+") return numberLeft+numberRight;
-    if(operation.value()=="*" || operation.value()=="h*") return numberLeft*numberRight;
-    if(operation.value()=="/" || operation.value()==":") return numberLeft/numberRight;
-    if(operation.value()=="^" || operation.value()=="**") 
+    switch(id) // This goes against every principle.
     {
-        Frac frac {decimalToFraction(numberRight)};
-        std::string fractionAsString = std::to_string(frac.numer) + '/' + std::to_string(frac.denom);
-        if(abs(frac.numer)!=INFINITY && abs(calculation(getTokens(fractionAsString,false,true), xValue) - numberRight) < 0.0000000001)
-        {
-            if(abs(fmod(frac.denom,2))==1 && fmod(frac.numer,2)==0 && numberLeft<0)
+        case 0: return x+y;
+        case 1: return x*y;
+        case 2: return x/y;
+        case 3: return x*y;
+        case 4: 
+        {        
+            Frac frac {decimalToFraction(y)};
+            std::string fractionAsString = std::to_string(frac.numer) + '/' + std::to_string(frac.denom);
+            if(abs(frac.numer)!=INFINITY && abs(calculation(getTokens(fractionAsString,false,true), xValue) - y) < 0.0000000001)
             {
-                return pow(-numberLeft,numberRight);
+                if(abs(fmod(frac.denom,2))==1 && fmod(frac.numer,2)==0 && x<0)
+                {
+                    return pow(-x,y);
+                }
+                else if(abs(fmod(frac.denom,2))==1 && abs(fmod(frac.numer,2))==1 && x<0)
+                {
+                    return -pow(-x,y);
+                }
             }
-            else if(abs(fmod(frac.denom,2))==1 && abs(fmod(frac.numer,2))==1 && numberLeft<0)
-            {
-                return -pow(-numberLeft,numberRight);
-            }
+            return pow(x, y);
         }
-        return pow(numberLeft, numberRight);
+        case 5: return x-y*floor(x/y);
+        case 6: return x<y;
+        case 7: return x>y;
+        case 8: return x==y;
+        case 10: return fmod(x,y);
+        case 11: return remainder(x,y);
+        case 12: return (tgamma(x+1)/tgamma(x-y+1));
+        case 13: return (tgamma(x+1)/(tgamma(y+1)*tgamma(x-y+1)));
+
+        case 15: return x&&y;
+        case 16: return (!x)!=(!y);
+        case 17: return abs(x-y)<=globals::options.aroundTruthinessLeniency;
+        case 18: return (x==0)&&(y==0);
+        case 19: return x||y;
+        case 20: return x!=y;
+        case 21: return x>=y;
+        case 22: return x<=y;
+        default: return NAN;
     }
-    if(operation.value()=="mod" || operation.value()=="%") return numberLeft-numberRight*floor(numberLeft/numberRight);
-    if(operation.value()=="fmod") return fmod(numberLeft,numberRight);
-    if(operation.value()=="rmod") return remainder(numberLeft,numberRight);
-    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::options.aroundTruthinessLeniency;
-    if(operation.value()=="<") return numberLeft<numberRight;
-    if(operation.value()==">") return numberLeft>numberRight;    
-    if(operation.value()=="=") return numberLeft==numberRight;
-    if(operation.value()==">=") return numberLeft>=numberRight;
-    if(operation.value()=="<=") return numberLeft<=numberRight;  
-    if(operation.value()=="=!") return numberLeft!=numberRight;
-    if(operation.value()=="OR") return numberLeft||numberRight;
-    if(operation.value()=="AND") return numberLeft&&numberRight;
-    if(operation.value()=="XOR") return (!numberLeft)!=(!numberRight);
-    if(operation.value()=="NOR") return (numberLeft==0)&&(numberRight==0);
 
-
-    if(operation.value()=="nPk") return (tgamma(numberLeft+1)/tgamma(numberLeft-numberRight+1));
-    if(operation.value()=="nCk") return (tgamma(numberLeft+1)/(tgamma(numberRight+1)*tgamma(numberLeft-numberRight+1)));
-
-    std::unreachable();
+    return NAN;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2320,173 +2436,163 @@ template <typename T>
 T evaluateUnary(Token &numberToken, Token &operation, const T xValue)
 {
     if(globals::error) return NAN;
-    T number=numberToken.number(xValue);
-    T result{1};
-    if(operation.value()=="-") return -number;
+    if(globals::OpToID.find(operation.value()) == globals::OpToID.end()) return NAN;
+    size_t id = globals::OpToID.find(operation.value())->second;
+    T x=numberToken.number(xValue);
 
-    if(operation.value()=="sign")
+
+    switch(id) // :horror:
     {
-        if(number==0) return 0;
-        if(number>0) return 1;
-        if(number<0) return -1;
-    }
-
-    if(operation.value()=="sqrt") return sqrt(number);
-
-    if(operation.value()=="!")
-    {
-        return tgamma(number+1);
-    }
-
-    if(operation.value()=="lgam") return lgamma(number);
-    if(operation.value()=="gam") return tgamma(number);
-    
-    if(operation.value()=="sat") return (1+abs(number)-abs(number-1))/2;
-
-    if(operation.value()=="sin") return sin(number);
-    if(operation.value()=="cos") return cos(number);
-    if(operation.value()=="tan") return tan(number);
-
-    if(operation.value()=="sec") return 1/cos(number);
-    if(operation.value()=="csc") return 1/sin(number);
-    if(operation.value()=="cot") return 1/tan(number);
-
-    if(operation.value()=="asec") return acos(1/number);
-    if(operation.value()=="acsc") return asin(1/number);
-    if(operation.value()=="acot") return atan(1/number);
-
-    if(operation.value()=="sinh") return sinh(number);
-    if(operation.value()=="cosh") return cosh(number);
-    if(operation.value()=="tanh") return tanh(number);
-
-    if(operation.value()=="asinh") return asinh(number);
-    if(operation.value()=="acosh") return acosh(number);
-    if(operation.value()=="atanh") return atanh(number);
-
-    if(operation.value()=="asech") return acosh(1/number);
-    if(operation.value()=="acsch") return asinh(1/number);
-    if(operation.value()=="acoth") return atanh(1/number);
-
-    if(operation.value()=="sech") return 1/cosh(number);
-    if(operation.value()=="csch") return 1/sinh(number);
-    if(operation.value()=="coth") return 1/tanh(number);
-
-    if(operation.value()=="asin") return asin(number);
-    if(operation.value()=="acos") return acos(number);
-    if(operation.value()=="atan") return atan(number);
-
-    if(operation.value()=="round") return round(number);
-    if(operation.value()=="bround")
-    {
-        if(number+0.5 == round(number) && fmod(floor(number),2)==0)
+        case 23: return tgamma(x+1);
+        case 24: return -x;
+        case 25:
         {
-            return floor(number);
-        }
-        else return round(number);
-    }
-    if(operation.value()=="floor") return floor(number);
-    if(operation.value()=="trunc") return trunc(number);
-    if(operation.value()=="ceil") return ceil(number);
-    if(operation.value()=="abs") return abs(number);
-    if(operation.value()=="ln") return log(number);
-    if(operation.value()=="ln^2") return pow(log(number),2);
-    // if(operation.value()=="log10") return log10(number);
-    Token e{"e"};
-    if(operation.value()=="exp") return pow(e.number(xValue),number);
-
-    if(operation.value()=="cbrt") return cbrt(number);
-    if(operation.value()=="qtrt") return pow(number,0.25);
-    
-    if(operation.value()=="sinc")
-    {
-        if(number!=0) return sin(number)/number;
-        else return 1;
-    }    
-    if(operation.value()=="sinc^2")
-    {
-        if(number!=0) return pow(sin(number)/number,2);
-        else return 1;
-    }
-
-    if(operation.value()=="ReLU") return (number+abs(number))/2;
-
-    if(operation.value()=="sstep")
-    {
-        if(number>1) return 1;
-        else if(number<0) return 0;
-        return pow(number,2)*(3-2*number);
-    }
-
-    if(operation.value()=="prime")
-    {
-        number=floor(number);
-        if(number<=1) return false;
-        else if(number == 2 || number == 3) return true;
-        else if(fmod(number,2)==0 || fmod(number,3)==0) return false;
-        for(size_t i{5}; i*i<=number; i+=6)
-        {
-            if(fmod(number,i) == 0 || fmod(number,i+2) == 0) return false;
-        }
-        return true;
-    }
-    
-    if(operation.value()=="!!")
-    {
-        if(number<0) return NAN;
-        number=round(number);
-
-        if constexpr(std::is_same<T,float>())
-        {
-            for(T i{std::fmod(number, 2.f)+2}; i<number+1; i+=2)
+            if(x<0) return NAN;
+            x=round(x);
+            T result{1};
+            for(T i{fmod(x, 2)+2}; i<x+1; i+=2)
             {
-                if(number>19572801.5) return INFINITY;
-                if(number==0) return 1.0;
+                if(x>19572801.5) return INFINITY;
+                if(x==0) return 1.0;
                 result*=i;
             }
+            if(x<=3) return x;  
+            return result;          
         }
-        else for(T i{fmod(number, 2)+2}; i<number+1; i+=2)
+        case 26: 
         {
-            if(number>19572801.5) return INFINITY;
-            if(number==0) return 1.0;
-            result*=i;
+            if(x!=0) return sin(x)/x;
+            else return 1;
         }
-        if(number<=3) return number;
+        case 27: 
+        {
+            if(x!=0) return pow(sin(x)/x,2);
+            else return 1;
+        }
+        case 28: 
+        {
+            Token e{"e"};
+            return pow(e.number(xValue),x);            
+        }
+        case 29:
+        {
+            if(x>0) return 1;
+            if(x<0) return -1;
+            else return 0;
+        }
+        case 30: return sqrt(x);
+        case 31: return cbrt(x);
+        case 32: return pow(x,0.25);
+
+
+        case 33: return sin(x);
+        case 34: return cos(x);
+        case 35: return tan(x);
+
+        case 36: return sinh(x);
+        case 37: return cosh(x);
+        case 38: return tanh(x);
+
+
+        case 39: return asin(x);
+        case 40: return acos(x);
+        case 41: return atan(x);
+
+        case 42: return asinh(x);
+        case 43: return acosh(x);
+        case 44: return atanh(x);
+
+
+        case 45: return 1/cos(x);
+        case 46: return 1/sin(x);
+        case 47: return 1/tan(x);
+
+        case 48: return 1/cosh(x);
+        case 49: return 1/sinh(x);
+        case 50: return 1/tanh(x);
+
+        case 51: return acos(1/x);
+        case 52: return asin(1/x);
+        case 53: return atan(1/x);
+
+        case 54: return acosh(1/x);
+        case 55: return asinh(1/x); // aschhschhshuhuschush
+        case 56: return atanh(1/x);
+
+        case 57: // prime
+        {
+            x=floor(x);
+            if(x<=1) return false;
+            else if(x == 2 || x == 3) return true;
+            else if(fmod(x,2)==0 || fmod(x,3)==0) return false;
+            for(size_t i{5}; i*i<=x; i+=6)
+            {
+                if(fmod(x,i) == 0 || fmod(x,i+2) == 0) return false;
+            }
+            return true;            
+        }
+        case 58: return log(x);
+        case 59: return pow(log(x),2);
+        case 60: return abs(x);
+        case 61: return floor(x);
+        case 62: return trunc(x);
+        case 63: return ceil(x);
+        case 64:
+        {
+            if(x+0.5 == round(x) && fmod(floor(x),2)==0)
+            {
+                return floor(x);
+            }
+            else return round(x);            
+        }
+        case 65: return round(x);
+        case 66: return (1+abs(x)-abs(x-1))/2;
+        case 67: return (x+abs(x))/2;
+        case 68: 
+        {
+            if(x>1) return 1;
+            else if(x<0) return 0;
+            return pow(x,2)*(3-2*x);            
+        }
+        case 69: return lgamma(x);
+        case 70: return tgamma(x);
+
+
+        case 71: return pow(sin(x),2);
+        case 72: return pow(cos(x), 2);
+        case 73: return pow(tan(x),2);
+
+        case 74: return pow(sinh(x),2);
+        case 75: return pow(cosh(x),2);
+        case 76: return pow(tanh(x),2);
+
+        case 77: return pow(asin(x),2);
+        case 78: return pow(acos(x),2);
+        case 79: return pow(atan(x),2);
+
+        case 80: return pow(asinh(x),2);
+        case 81: return pow(acosh(x),2);
+        case 82: return pow(atanh(x),2);
+
+        case 83: return pow(1/cos(x),2);
+        case 84: return pow(1/sin(x),2);
+        case 85: return pow(1/tan(x),2);
+
+        case 86: return pow(1/cosh(x),2);
+        case 87: return pow(1/sinh(x),2);
+        case 88: return pow(1/tanh(x),2);
+
+        case 89: return pow(acos(1/x),2);
+        case 90: return pow(asin(1/x),2);
+        case 91: return pow(atan(1/x),2);
+
+        case 92: return pow(acosh(x),2);
+        case 93: return pow(asinh(x),2);
+        case 94: return pow(atanh(1/x),2);
+        
+        default: return NAN;
     }
-
-    // Why do these even exist.
-    if(operation.value()=="sin^2") return pow(sin(number),2);
-    if(operation.value()=="cos^2") return pow(cos(number),2);
-    if(operation.value()=="tan^2") return pow(tan(number),2);
-
-    if(operation.value()=="sec^2") return pow(1/cos(number),2);
-    if(operation.value()=="csc^2") return pow(1/sin(number),2);
-    if(operation.value()=="cot^2") return pow(1/tan(number),2);
-
-    if(operation.value()=="asec^2") return pow(acos(1/number),2);
-    if(operation.value()=="acsc^2") return pow(asin(1/number),2);
-    if(operation.value()=="acot^2") return pow(atan(1/number),2);
-
-    if(operation.value()=="sinh^2") return pow(sinh(number),2);
-    if(operation.value()=="cosh^2") return pow(cosh(number),2);
-    if(operation.value()=="tanh^2") return pow(tanh(number),2);
-
-    if(operation.value()=="asinh^2") return pow(asinh(number),2);
-    if(operation.value()=="acosh^2") return pow(acosh(number),2);
-    if(operation.value()=="atanh^2") return pow(atanh(number),2);
-
-    if(operation.value()=="asech^2") return pow(acosh(1/number),2);
-    if(operation.value()=="acsch^2") return pow(asinh(1/number),2);
-    if(operation.value()=="acoth^2") return pow(atanh(1/number),2);
-
-    if(operation.value()=="sech^2") return pow(1/cosh(number),2);
-    if(operation.value()=="csch^2") return pow(1/sinh(number),2);
-    if(operation.value()=="coth^2") return pow(1/tanh(number),2);
-
-    if(operation.value()=="asin^2") return pow(asin(number),2);
-    if(operation.value()=="acos^2") return pow(acos(number),2);
-    if(operation.value()=="atan^2") return pow(atan(number),2);
-
-    return result;
+    return NAN;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
