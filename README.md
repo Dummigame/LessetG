@@ -2,13 +2,13 @@
 
 Calculator with...
 
-Order of operations! Constants! Variables! Macros! Over 80 functions! Table calculations! Up to 100 decimal places of precision! Enough operators to make your head spin! Styling! Military grade scripting! Graphing! Jank!
+Order of operations! Constants! Variables! Macros! Nearly 90 functions! Table calculations! Up to 100 decimal places of precision! Enough operators to make your head spin! Styling! Military grade scripting! Graphing! Jank!
 
 <img src="/Assets/graph.png" height="75%" width="75%">
 
 To compile:
 
-- Install Vulkan headers
+- Install Vulkan headers, nativefiledialog-extended
 
 - Copy the contents of ImStyle/src into the source directory of LessetG (https://github.com/csprite/ImStyle) 
 

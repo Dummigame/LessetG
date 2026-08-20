@@ -71,4 +71,4 @@ target_include_directories(LessetG PRIVATE
         ${libimplot_SOURCE_DIR}
         ${libglfw_SOURCE_DIR}/include
 )
-target_link_libraries(LessetG ${LIBRARIES} imgui glfw implot)
+target_link_libraries(LessetG ${LIBRARIES} imgui glfw implot nfd)

@@ -1,10 +1,11 @@
-#include <boost/multiprecision/fwd.hpp>
+
 #ifdef LESSET
     #error "Only include lesset.hpp once."
 #endif
 
 #define LESSET
 
+#include <limits>
 #include <cctype>
 #include <random>
 #include <iostream>
@@ -19,6 +20,7 @@
 #include <unordered_map>
 #include <thread>
 #include <future>
+#include <charconv>
 
 namespace lessetB
 {
@@ -58,19 +60,26 @@ enum class token_t
 {
     BINARYOP,
     UNARYOP,
-    FUNCTION,
+    VARIABLE,
+    CONSTANT,
+    SUMVAR,
+    FUNCTION, // Simple baby functions
+    
+    SUBEXPR,
+    // Multiarg functions
     IF,
     NUMBER,
     ROOT,
     LOG,
     DIFF,
-    MEAN, // Meanie
+    MEAN,
     MEDIAN,
     STDEVP,
     GCF,
     LCM,
     RNDINT,
     ROUND,
+    TRUNC,
     RNDSEL,
     ABS,
     MAX,
@@ -80,12 +89,10 @@ enum class token_t
     MIX,
     MIN,
     SUM,
-    SUMVAR,
-    SUBEXPR,
-    VARIABLE,
-    CONSTANT,
+
     ASSIGNMENTVARIABLE,
     ASSIGNMENTMACRO,
+
     INVALID
 };
 
@@ -113,9 +120,9 @@ struct Point
 
 struct Frac
 {
-    float x{};
-    float y{};
-    Frac(float inX, float inY) : x(inX), y(inY){}
+    float numer{};
+    float denom{};
+    Frac(float inX, float inY) : numer(inX), denom(inY){}
 };
 
 struct Options
@@ -165,15 +172,23 @@ class Token;
 namespace globals
 {
     inline Options options;
+
     inline std::vector<Variable> userVariables;
     inline std::vector<Macro> userMacros;
+
     inline std::pair<std::vector<double>,std::vector<double>> points; 
+
     inline std::string previousResult;
     inline std::string errorMessage;
-    inline bool error{}; // Has an error occured?
+    inline bool error{};
+
     inline bool passedCalculationsFile{};
     inline bool passedInAsArg{};
-    inline int decimalPrecision{100};
+
+    inline int decimalPrecision{MAXOUTPUTPRECISION};
+
+    inline bool debugCout{};
+    inline bool debugCoutUsed{};
 
     inline std::unordered_map<std::string, std::vector<Token>> tokenMemory;
     
@@ -182,12 +197,15 @@ namespace globals
         {"+",    token_t::BINARYOP},
         {"*",    token_t::BINARYOP},
         {"/",    token_t::BINARYOP},
+        {":",    token_t::BINARYOP},
         {"^",    token_t::BINARYOP},
         {"%",    token_t::BINARYOP},
         {"<",    token_t::BINARYOP},
         {">",    token_t::BINARYOP},
         {"=",    token_t::BINARYOP},
         {"mod",    token_t::BINARYOP},
+        {"fmod",    token_t::BINARYOP},
+        {"rmod",    token_t::BINARYOP},
         {"nPk",    token_t::BINARYOP},
         {"nCk",    token_t::BINARYOP},
         {"**",    token_t::BINARYOP},
@@ -276,8 +294,10 @@ namespace globals
         {"prime", token_t::FUNCTION},
 
         {"ln", token_t::FUNCTION},
+        {"ln^2", token_t::FUNCTION},
         {"abs", token_t::FUNCTION},
         {"floor", token_t::FUNCTION},
+        {"trunc", token_t::FUNCTION},
         {"ceil", token_t::FUNCTION},
         {"bround", token_t::FUNCTION},
         {"round", token_t::FUNCTION},
@@ -319,116 +339,7 @@ namespace globals
         {"acoth^2", token_t::FUNCTION},
 
     };
-
-    const std::unordered_map<std::string, token_t> unaryOperations
-    {
-        {"!", token_t::UNARYOP},
-        {"-", token_t::UNARYOP},
-        {"!!", token_t::UNARYOP},
-    };
-
-    const std::unordered_map<std::string, token_t> binaryOperations
-    {
-        {"+",    token_t::BINARYOP},
-        {"*",    token_t::BINARYOP},
-        {"/",    token_t::BINARYOP},
-        {"^",    token_t::BINARYOP},
-        {"%",    token_t::BINARYOP},
-        {"<",    token_t::BINARYOP},
-        {">",    token_t::BINARYOP},
-        {"=",    token_t::BINARYOP},
-
-        {"mod",    token_t::BINARYOP},
-        {"nPk",    token_t::BINARYOP},
-        {"nCk",    token_t::BINARYOP},
-        {"**",    token_t::BINARYOP},
-        {"AND",    token_t::BINARYOP},
-        {"XOR",    token_t::BINARYOP},
-        {"AROUND",    token_t::BINARYOP},
-        {"NOR",    token_t::BINARYOP},
-        {"OR",    token_t::BINARYOP},
-        {"=!",    token_t::BINARYOP},
-        {">=",    token_t::BINARYOP},
-        {"<=",    token_t::BINARYOP},
-    };
-
-    const std::unordered_map<std::string, token_t> functions
-    {
-        {"sinc", token_t::FUNCTION},
-        {"sinc^2", token_t::FUNCTION},
-        {"exp", token_t::FUNCTION},
-        {"sign", token_t::FUNCTION},
-        {"sqrt", token_t::FUNCTION},
-        {"cbrt", token_t::FUNCTION},
-        {"qtrt", token_t::FUNCTION},
-
-        {"sin", token_t::FUNCTION},
-        {"cos", token_t::FUNCTION},
-        {"tan", token_t::FUNCTION},
-        {"sinh", token_t::FUNCTION},
-        {"cosh", token_t::FUNCTION},
-        {"tanh", token_t::FUNCTION},
-
-        {"asin", token_t::FUNCTION},
-        {"acos", token_t::FUNCTION},
-        {"atan", token_t::FUNCTION},
-        {"asinh", token_t::FUNCTION},
-        {"acosh", token_t::FUNCTION},
-        {"atanh", token_t::FUNCTION},
-
-        {"sec", token_t::FUNCTION},
-        {"csc", token_t::FUNCTION},
-        {"cot", token_t::FUNCTION},
-        {"sech", token_t::FUNCTION},
-        {"csch", token_t::FUNCTION},
-        {"coth", token_t::FUNCTION},
-
-        {"asec", token_t::FUNCTION},
-        {"acsc", token_t::FUNCTION},
-        {"acot", token_t::FUNCTION},
-        {"asech", token_t::FUNCTION},
-        {"acsch", token_t::FUNCTION}, //aschhschhshuhuschush
-        {"acoth", token_t::FUNCTION},
-
-        {"sin^2", token_t::FUNCTION},
-        {"cos^2", token_t::FUNCTION},
-        {"tan^2", token_t::FUNCTION},
-        {"sinh^2", token_t::FUNCTION},
-        {"cosh^2", token_t::FUNCTION},
-        {"tanh^2", token_t::FUNCTION},
-
-        {"asin^2", token_t::FUNCTION},
-        {"acos^2", token_t::FUNCTION},
-        {"atan^2", token_t::FUNCTION},
-        {"asinh^2", token_t::FUNCTION},
-        {"acosh^2", token_t::FUNCTION},
-        {"atanh^2", token_t::FUNCTION},
-
-        {"sec^2", token_t::FUNCTION},
-        {"csc^2", token_t::FUNCTION},
-        {"cot^2", token_t::FUNCTION},
-        {"sech^2", token_t::FUNCTION},
-        {"csch^2", token_t::FUNCTION},
-        {"coth^2", token_t::FUNCTION},
-
-        {"asec^2", token_t::FUNCTION},
-        {"acsc^2", token_t::FUNCTION},
-        {"acot^2", token_t::FUNCTION},
-        {"asech^2", token_t::FUNCTION},
-        {"acsch^2", token_t::FUNCTION}, //aschhschhshuhuschush^2
-        {"acoth^2", token_t::FUNCTION},
-
-        {"ln", token_t::FUNCTION},
-        {"abs", token_t::FUNCTION},
-        {"floor", token_t::FUNCTION},
-        {"ceil", token_t::FUNCTION},
-        {"bround", token_t::FUNCTION},
-        {"round", token_t::FUNCTION},
-        {"sat", token_t::FUNCTION},
-        {"ReLU", token_t::FUNCTION},
-        {"sstep", token_t::FUNCTION},
-    };
-
+   
     const std::unordered_map<std::string, token_t> multiArgFunctions
     {
         {"root", token_t::ROOT},
@@ -453,6 +364,7 @@ namespace globals
         {"if", token_t::IF},
         {"sum", token_t::SUM},
         {"round", token_t::ROUND},
+        {"trunc", token_t::TRUNC},
     };
 
     const std::unordered_map<std::string, std::string> constants
@@ -492,7 +404,7 @@ namespace globals
         {"rndint","rndint"},
     };
 
-    const std::unordered_map<std::string, std::string> valueToConstants
+    const std::unordered_map<std::string, std::string> valueToConstant
     {
         { "2.718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427","ℯ"},
         { "3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068","π"},
@@ -532,6 +444,7 @@ class Token
     token_t tokenType{};
     tokenCategory_t tokenCategory{};
     std::string tokenValue{};
+    double tokenNumber{NAN};
 
     ///////////////////////////////////////////////
     const token_t determineType(std::string &value)
@@ -540,7 +453,7 @@ class Token
 
         for(size_t i{}; i<globals::userVariables.size(); i++)
         {
-            if(value==globals::userVariables.at(i).name) return token_t::CONSTANT;
+            if(value==globals::userVariables.at(i).name || globals::constants.find(value)!=globals::constants.end()) return token_t::CONSTANT;
         }
 
         if(value=="h*") return token_t::BINARYOP;
@@ -630,22 +543,19 @@ class Token
         return "0";
     }
     ///////////////////////////////////////////////
-    static tokenCategory_t determineTokenCategory(token_t &type) 
+    static tokenCategory_t determineTokenCategory(token_t type) 
     {
         if(type==token_t::NUMBER || type==token_t::VARIABLE || type==token_t::CONSTANT || type==token_t::SUMVAR) return tokenCategory_t::NUMBER;
 
-        else if(type==token_t::SUBEXPR || type==token_t::SUM ||
-                type==token_t::ROOT || type==token_t::ABS || type==token_t::MAX || type==token_t::SMAX || type==token_t::SMIN || type==token_t::SABS || type==token_t::IF ||
-                type==token_t::MIN || type==token_t::MEDIAN || type==token_t::STDEVP || type==token_t::GCF || type==token_t::LCM || type==token_t::DIFF || type==token_t::MIX ||
-                type==token_t::LOG || type==token_t::MEAN || type==token_t::RNDINT || type==token_t::RNDSEL || type==token_t::ROUND) return tokenCategory_t::SUBEXPR;
+        if(type==token_t::FUNCTION)                                                                              return tokenCategory_t::FUNCTION;
 
-        else if(type==token_t::FUNCTION) return tokenCategory_t::FUNCTION;
+        if(type==token_t::ASSIGNMENTVARIABLE || type==token_t::ASSIGNMENTMACRO)                                  return tokenCategory_t::ASSIGNMENT;
 
-        else if(type==token_t::ASSIGNMENTVARIABLE || type==token_t::ASSIGNMENTMACRO) return tokenCategory_t::ASSIGNMENT;
+        if(type==token_t::BINARYOP || type==token_t::UNARYOP)                                                    return tokenCategory_t::OPERATOR;
 
-        else if(type==token_t::INVALID) return tokenCategory_t::INVALID;
-
-        else return tokenCategory_t::OPERATOR;
+        if(type==token_t::INVALID)                                                                               return tokenCategory_t::INVALID;
+        
+        return tokenCategory_t::SUBEXPR;
     }
     ///////////////////////////////////////////////
     ///////////////////////////////////////////////
@@ -654,11 +564,58 @@ class Token
 
     Token(std::string value)
     {
+        
+        if(globals::options.graph) // The things you do to make graphing faster... this block basically shortcuts the regular procedure for making a token in case it's a number, the common case.
+        {
+            token_t potentialNumberType{token_t::INVALID};
+            if(isNumber(value))
+            {
+                potentialNumberType=token_t::NUMBER;
+                tokenValue=value;
+            }
+            else for(size_t i{}; i<globals::userVariables.size(); i++)
+            {
+                if(value==globals::userVariables.at(i).name || globals::constants.find(value)!=globals::constants.end())
+                {
+                    potentialNumberType=token_t::CONSTANT;
+                    tokenValue=replaceConstants(value);
+                    if(tokenValue=="rnd" || tokenValue=="rndint") potentialNumberType=token_t::INVALID;
+                    break;
+                }
+            }
+            if(potentialNumberType!=token_t::INVALID) 
+            {
+                std::from_chars(tokenValue.data(), tokenValue.data()+tokenValue.length(),tokenNumber);
+                if(tokenNumber==tokenNumber || tokenValue=="nan")
+                {
+                    tokenType=potentialNumberType;
+                    tokenCategory=tokenCategory_t::NUMBER;
+                    return;
+                }
+                
+            }
+        }
         tokenType = determineType(value);
         if(tokenType==token_t::CONSTANT) tokenValue=replaceConstants(value);
         
         tokenCategory=determineTokenCategory(tokenType);
         if(tokenValue=="")tokenValue = value;
+
+    }
+
+    Token(cpp_dec_float_100 &value)
+    {
+        tokenType = token_t::NUMBER;        
+        tokenCategory=tokenCategory_t::NUMBER;
+        tokenValue=value.str(MAXOUTPUTPRECISION);
+    }
+
+
+    Token(double value)
+    {
+        tokenType = token_t::NUMBER;        
+        tokenCategory=tokenCategory_t::NUMBER;
+        tokenNumber=value;
     }
     ///////////////////////////////////////////////
     template <typename T>
@@ -673,12 +630,19 @@ class Token
 
         if (tokenType != token_t::NUMBER && tokenType != token_t::CONSTANT) return NAN;
         if constexpr(std::is_same<T,cpp_dec_float_100>()) return static_cast<cpp_dec_float_100>(tokenValue);
-        else return std::stold(tokenValue);
+        else return tokenNumber;
     }
     ///////////////////////////////////////////////
     std::string value() const
     {
-        return tokenValue;
+        if(tokenValue!="") return tokenValue;
+        else
+        {
+            std::ostringstream oss;
+            oss.precision(std::numeric_limits<double>::digits10);
+            oss<<tokenNumber;
+            return oss.str();
+        }
     }  
     token_t type() const
     {
@@ -691,7 +655,7 @@ class Token
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Token> getTokens(const std::string&, bool resetFirstRun=false);
+std::vector<Token> getTokens(const std::string&, bool resetFirstRun=false, bool noMemoize=false);
 void parseMultiArgFunction(const std::string &input, std::vector<Token> &tokens, const char* functionName, size_t &i, bool &inFunctionCall, size_t argCount=1);
 void getVariableArgs(std::vector<Token>&, Options&);
 
@@ -711,6 +675,7 @@ template <typename T = cpp_dec_float_100> T evaluateLeast(const Token &arg, cons
 template <typename T = cpp_dec_float_100> T evaluateGcf(const Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateLcm(const Token &arg, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateRound( const Token &arg, const T xValue);
+template <typename T = cpp_dec_float_100> T evaluateFloor( const Token &arg, const T xValue);
 
 template <typename T = cpp_dec_float_100> T evaluateUnary(Token&, Token&, const T xValue);
 template <typename T = cpp_dec_float_100> T evaluateBinary(Token&, Token&, Token&, const T xValue);
@@ -737,10 +702,10 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
     globals::passedCalculationsFile=passedCalculationsFile;
 
     globals::options=options;
-    std::cout.precision(100);
+    std::cout.precision(MAXOUTPUTPRECISION);
     bool firstPass{true};
     std::ostringstream resultAsOSStream;
-    resultAsOSStream.precision(100);
+    resultAsOSStream.precision(MAXOUTPUTPRECISION);
     globals::previousResult="nan";
     if(options.ans!="") globals::previousResult=options.ans;
     std::cout.precision(MAXOUTPUTPRECISION);
@@ -889,7 +854,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                     break;
                 }
 
-                std::vector<Token> nameCheckTokens{getTokens(tokens.at(i).value().substr(3,tokens.at(i).value().length()-4))};
+                std::vector<Token> nameCheckTokens{getTokens(tokens.at(i).value().substr(3,tokens.at(i).value().length()-4),false,true)};
                 for(size_t h{}; h<nameCheckTokens.size(); h++)
                 {
                     if(nameCheckTokens.at(h).type()==token_t::FUNCTION || (nameCheckTokens.at(h).typeCategory()==tokenCategory_t::OPERATOR && nameCheckTokens.at(h).value()!="h*") || nameCheckTokens.at(h).type()==token_t::NUMBER || nameCheckTokens.at(h).type()==token_t::VARIABLE)
@@ -1064,11 +1029,11 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
                         else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
                     }
                 }
-                if(globals::decimalPrecision!=100 && isNumber(resultAsOSStream.str()))
+                if(globals::decimalPrecision!=500 && isNumber(resultAsOSStream.str()))
                 {
                     // x-remainder(x,1/pow(10,decimalplaces))
                     std::ostringstream oss;
-                    oss.precision(100);
+                    oss.precision(MAXOUTPUTPRECISION);
                     oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+resultAsOSStream.str()+','+std::to_string(globals::decimalPrecision))), NAN);
                     resultAsOSStream.str("");
                     resultAsOSStream<<oss.str();
@@ -1112,16 +1077,22 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             else // Graphs without x are constant and thus only need to be calculated once.
             {
                 double value = calculation<double>(tokens,NAN,NAN);
+                globals::options.xStep*=6; // Less points
                 size_t amount = static_cast<size_t>((globals::options.xMax-globals::options.xMin)/globals::options.xStep);
                 double xValue = static_cast<double>(globals::options.xMin);
-                globals::options.xStep*=2;
+                
 
-                for(size_t i{}; i<amount; i++)
+                for(size_t i{}; i<amount+3; i++) // A few extra points.
                 {
                     globals::points.first.emplace_back(xValue);
                     xValue+=static_cast<double>(globals::options.xStep);
                     globals::points.second.emplace_back(value);
                 }
+            }
+            if(globals::debugCout)
+            {
+                std::cout<<"Points calculated for graph "<<equation<<" : ("<<globals::points.first.size()<<" ; "<<globals::points.second.size()<<")\n";
+                globals::debugCoutUsed=true;
             }
         }
 
@@ -1133,16 +1104,16 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             globals::errorMessage.clear();
             goto cleanup;
         }
+
         // Show results equal to a constant as that constant
-        
-        if(!hasX && options.showFractions && globals::valueToConstants.find(resultAsOSStream.str())!=globals::valueToConstants.end())
+        if(!hasX && options.showFractions && globals::valueToConstant.find(resultAsOSStream.str())!=globals::valueToConstant.end())
         {
-            if(equation!=globals::valueToConstants.find(resultAsOSStream.str())->second)
+            if(equation!=globals::valueToConstant.find(resultAsOSStream.str())->second)
             {
-                if(!passedCalculationsFile) result=globals::valueToConstants.find(resultAsOSStream.str())->second;
+                if(!passedCalculationsFile) result=globals::valueToConstant.find(resultAsOSStream.str())->second;
                 else
                 {
-                    result+=equation+" = "+globals::valueToConstants.find(resultAsOSStream.str())->second+'\n';
+                    result+=equation+" = "+globals::valueToConstant.find(resultAsOSStream.str())->second+'\n';
                 }
                 isKnownConstant=true;
             }
@@ -1159,33 +1130,34 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             
             std::string currentResult=resultAsOSStream.str();
             resultAsOSStream.str("");
-            resultAsOSStream<<frac.x<<'/'<<frac.y;
+            resultAsOSStream<<frac.numer<<'/'<<frac.denom;
 
             // Just try a couple times with more and more decimal places and see if the funny spits out a reasonable fraction lmao
             for(size_t i{10}; 
-                (abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str()), NAN) - static_cast<cpp_dec_float_100>(currentResult)) >= cpp_dec_float_100(0.000000000000000000000000000000001) || frac.x==INFINITY) && 
+                (abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) >= cpp_dec_float_100(0.000000000000000000000000000000001) || frac.numer==INFINITY) && 
                 i<=20; i++)
             {
                 frac = decimalToFraction(static_cast<cpp_dec_float_100>(currentResult),i);
                 resultAsOSStream.str("");
-                resultAsOSStream<<frac.x<<'/'<<frac.y;
+                resultAsOSStream<<frac.numer<<'/'<<frac.denom;
             }
 
-            if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str()), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
+            if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
                // resultAsOSStream.str().length()<12 &&  // Lowk a bandaid to prevent it saying something stupid.
                equation!=resultAsOSStream.str() && 
                // std::fmod(frac.y,10)!=0 && // Stops something like 3.307 -> 3307/1000
-               frac.y!=1) 
+               frac.denom!=1) 
             {
                 if(!passedCalculationsFile) result=resultAsOSStream.str();
                 else result+=equation+" = "+resultAsOSStream.str()+'\n';
             }
         }
 
-        if(globals::decimalPrecision!=100 && isNumber(result))
+        if(globals::decimalPrecision!=MAXOUTPUTPRECISION && isNumber(result))
         {
             // Total hack. I don't care though.
             std::ostringstream oss;
+            oss.precision(MAXOUTPUTPRECISION);
             oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+result+','+std::to_string(globals::decimalPrecision))), NAN);
             result=oss.str();
         }
@@ -1209,8 +1181,6 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
 
         userMacros=globals::userMacros;
         userVariables=globals::userVariables;
-
-
         return false;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1310,7 +1280,7 @@ inline void parseMultiArgFunction(const std::string &input, std::vector<Token> &
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Pretty much a lexer.
-inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun)
+inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun, bool noMemoize)
 {
     std::ostringstream resultAsOSStream;
     resultAsOSStream.precision(MAXOUTPUTPRECISION);
@@ -1372,28 +1342,34 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         }
 
         // Parse MultiArg Functions
-        if(!inFunctionCall && input.find("mean(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mean",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("diff(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"diff",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("median(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"median",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("stdevp(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"stdevp",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("max(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"max",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("sabs(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sabs",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("smin(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smin",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("smax(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"smax",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("gcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcf",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("hcf(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcf",i,inFunctionCall); // Alias
-        else if(!inFunctionCall && input.find("hcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"hcd",i,inFunctionCall); // Alias
-        else if(!inFunctionCall && input.find("gcd(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"gcd",i,inFunctionCall); // Alias
-        else if(!inFunctionCall && input.find("mix(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"mix",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("lcm(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"lcm",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("min(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"min",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("rndsel(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndsel",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("rndint(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"rndint",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("root(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"root",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("log(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"log",i,inFunctionCall);
-        else if(!inFunctionCall && input.find("if(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"if",i,inFunctionCall,2);
-        else if(!inFunctionCall && input.find("sum(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"sum",i,inFunctionCall,3);
-        else if(!inFunctionCall && input.find("round(", i)==i) parseMultiArgFunction(input.substr(i),tokens,"round",i,inFunctionCall);
+        for(size_t j{MAXKEYWORDLENGTH}; j>2 && !inFunctionCall; j--)
+        {
+            if(j>input.length()-i) j=input.length()-i;
+            if(j<=2) break;
+            token_t type{token_t::INVALID};
+            size_t offset{};
+            if(globals::multiArgFunctions.find(input.substr(i,j))!=globals::multiArgFunctions.end())
+            {
+                type=globals::multiArgFunctions.find(input.substr(i,j))->second;
+                offset=globals::multiArgFunctions.find(input.substr(i,j))->first.length();
+
+                if(i+offset<input.length() && input.at(i+offset)=='(')
+                {
+                    size_t minArgCount{static_cast<size_t>(-1)};
+                    switch(type)
+                    {
+                        case token_t::SMAX: minArgCount=2; break;
+                        case token_t::SMIN: minArgCount=2; break;
+                        case token_t::RNDINT: minArgCount=2; break;
+                        case token_t::SUM: minArgCount=3; break;
+                        default: break;
+                    }
+                    parseMultiArgFunction(input.substr(i),tokens,input.substr(i,offset).c_str(),i,inFunctionCall);
+                }
+
+                break;
+            }
+        }
 
         // Parse Subexpression
         if(currentToken=="" && input.at(i)=='(') for(; i<input.length(); i++)
@@ -1423,24 +1399,6 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         // Parse other symbols
         if(currentToken=="")
         {
-            // size_t k{};
-            // for(; k<globals::userMacros.size(); k++)
-            // {
-            //     if(input.find(globals::userMacros.at(k).name,i)==i)
-            //     {
-                    
-            //         if(k>=3 && input.find("set",k-3)==k-3)
-            //         {
-            //             break;
-            //         }
-            //         input.erase(k,globals::userMacros.at(k).name.length());
-            //         input.insert(k,globals::userMacros.at(k).value);
-            //         i+=globals::userMacros.at(k).name.length()-globals::userMacros.at(k).value.length();
-            //         break;
-            //     }
-            // }
-            // if(k && currentToken!="") goto cleanup;
-
             size_t j{};
             for(; j<globals::userVariables.size(); j++)
             {
@@ -1452,15 +1410,19 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
             } 
             if(j && currentToken!="") goto cleanup;
             
-            std::string candidate;
-            for(size_t j{MAXKEYWORDLENGTH}; j>0; j--) // Check short substrs in front of where you are in equation in descending size and match against known symbols
             {
-                candidate = input.substr(i,j);
-                if(globals::symbols.find(candidate)!=globals::symbols.end())
+                std::string candidate;
+                size_t j{MAXKEYWORDLENGTH};
+                if(j>input.length()-i) j=input.length()-i;
+                for(; j>0; j--) // Check short substrs in front of where you are in equation in descending size and match against known symbols
                 {
-                    currentToken=candidate;
-                    i+=j-1;
-                    break;
+                    candidate = input.substr(i,j);
+                    if(globals::symbols.find(candidate)!=globals::symbols.end())
+                    {
+                        currentToken=candidate;
+                        i+=j-1;
+                        break;
+                    }
                 }
             }
 
@@ -1615,7 +1577,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     }
 
 
-    if(globals::errorMessage=="") globals::tokenMemory.emplace(input,tokens);
+    if(globals::errorMessage=="" && !noMemoize) globals::tokenMemory.emplace(input,tokens);
     return tokens;
 }
 
@@ -1627,8 +1589,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
 {
     if(tokens.size()==0) return NAN;
     std::ostringstream resultAsOSStream;
-    if(std::is_same_v<T,cpp_dec_float_100>) resultAsOSStream.precision(MAXOUTPUTPRECISION);
-    else resultAsOSStream.precision(15);
+    resultAsOSStream.precision(std::numeric_limits<T>::digits10);
         
     // Replace ans, rnd, rndint with numbers
     for(size_t i{}; i<tokens.size(); i++)
@@ -1693,6 +1654,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                         case token_t::RNDSEL:  evaluatedSubexpr = evaluateRndsel(tokens.at(i), xValue); break;
                         case token_t::RNDINT:  evaluatedSubexpr = evaluateRndint(tokens.at(i), xValue); break;
                         case token_t::ROUND:  evaluatedSubexpr = evaluateRound(tokens.at(i), xValue); break;
+                        case token_t::TRUNC:  evaluatedSubexpr = evaluateTrunc(tokens.at(i), xValue); break; 
                         case token_t::ABS:     evaluatedSubexpr = evaluateAbs(tokens.at(i), xValue, sumVar); break;
                         case token_t::ROOT:    evaluatedSubexpr = evaluateRoot(tokens.at(i), xValue); break;
                         case token_t::LOG:     evaluatedSubexpr = evaluateLog(tokens.at(i), xValue); break;
@@ -1700,10 +1662,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                         case token_t::SUM:     evaluatedSubexpr = evaluateSum(tokens.at(i), xValue); break;
                         default:{}                
                     }
-                    resultAsOSStream<<evaluatedSubexpr;
-                    tokens.at(i)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear(); 
+                    tokens.at(i)=Token(evaluatedSubexpr);
                 }
             }
             else if(pass==UNARYOPS && i!=0)
@@ -1711,10 +1670,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 if((tokens.at(i).type()==token_t::UNARYOP || tokens.at(i).type()==token_t::UNARYOP) && tokens.at(i-1).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedUnary;
-                    tokens.at(i-1)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-1)=Token(evaluatedUnary);
                     tokens.erase(tokens.begin()+i);
                     i--;
                 }
@@ -1729,21 +1685,14 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                         if((tokens.at(i-2).value()=="^" || tokens.at(i-2).value()=="**") && tokens.at(i-1).value()=="-" && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                         {
                             T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
-                            resultAsOSStream << evaluatedUnary;
-                            tokens.at(i-1)=Token(resultAsOSStream.str());
-                            resultAsOSStream.str("");
-                            resultAsOSStream.clear();
-                            tokens.erase(tokens.begin()+i);                               
+                            tokens.at(i-1)=Token(evaluatedUnary);
+                            tokens.erase(tokens.begin()+i);                        
                         }
                         if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="^" || tokens.at(i-1).value()=="**") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                         {
                             T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                            resultAsOSStream << evaluatedBinary;
-                            tokens.at(i-2)=Token(resultAsOSStream.str());
-                            tokens.erase(tokens.begin()+i-1);
-                            tokens.erase(tokens.begin()+i-1);
-                            resultAsOSStream.str("");
-                            resultAsOSStream.clear();
+                            tokens.at(i-2)=Token(evaluatedBinary);
+                            tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                         }
                     }
                 }
@@ -1755,15 +1704,12 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
 
-                    if((tokens.at(i-1).value()=="sin" || tokens.at(i-1).value()=="cos") && abs(evaluatedUnary)<std::numeric_limits<T>::epsilon())
+                    if(!globals::options.graph && (tokens.at(i-1).value()=="sin" || tokens.at(i-1).value()=="cos") && abs(evaluatedUnary)<std::numeric_limits<T>::epsilon())
                     {
                         evaluatedUnary=0;
                     }
 
-                    resultAsOSStream << evaluatedUnary;
-                    tokens.at(i-1)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-1)=Token(evaluatedUnary);
                     tokens.erase(tokens.begin()+i);
                     i--;
                 }
@@ -1773,10 +1719,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 if(i!=0 && (tokens.at(i-1).value()=="-") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedUnary=evaluateUnary(tokens.at(i), tokens.at(i-1), xValue);
-                    resultAsOSStream << evaluatedUnary;
-                    tokens.at(i-1)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-1)=Token(evaluatedUnary);
                     tokens.erase(tokens.begin()+i);
                     i--;
                 }
@@ -1787,34 +1730,30 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedBinary;
-                    tokens.at(i-2)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
-                    tokens.erase(tokens.begin()+i-1);
-                    tokens.erase(tokens.begin()+i-1);
+                    tokens.at(i-2)=Token(evaluatedBinary);
+                    tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }                
             }
 
             else if(pass==MULTIPLICATION && i>1)
             {
-                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="h*" || 
-                                                                                tokens.at(i-1).value()=="*" || 
-                                                                                tokens.at(i-1).value()=="/" || 
-                                                                                tokens.at(i-1).value()=="nCk" || 
-                                                                                tokens.at(i-1).value()=="nPk" || 
-                                                                                tokens.at(i-1).value()=="mod" || 
-                                                                                tokens.at(i-1).value()=="%") && 
-                                                                                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && 
+                (tokens.at(i-1).value()=="h*" || 
+                tokens.at(i-1).value()=="*" || 
+                tokens.at(i-1).value()=="/" || 
+                tokens.at(i-1).value()==":" || 
+                tokens.at(i-1).value()=="nCk" || 
+                tokens.at(i-1).value()=="nPk" || 
+                tokens.at(i-1).value()=="rmod" || 
+                tokens.at(i-1).value()=="fmod" || 
+                tokens.at(i-1).value()=="mod" || 
+                tokens.at(i-1).value()=="%") && 
+                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedBinary;
-                    tokens.at(i-2)=Token(resultAsOSStream.str());
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
-                    tokens.erase(tokens.begin()+i-1);
-                    tokens.erase(tokens.begin()+i-1);
+                    tokens.at(i-2)=Token(evaluatedBinary);
+                    tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }
             }
@@ -1823,51 +1762,41 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                 if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="+") && tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedBinary;
-                    tokens.at(i-2)=Token(resultAsOSStream.str());
-                    tokens.erase(tokens.begin()+i-1);
-                    tokens.erase(tokens.begin()+i-1);
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-2)=Token(evaluatedBinary);
+                    tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }
             }
             else if(pass==COMPARISONS && i>1)
             {
-                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="<" ||
-                                                                                tokens.at(i-1).value()==">" || 
-                                                                                tokens.at(i-1).value()==">=" || 
-                                                                                tokens.at(i-1).value()=="<=" || 
-                                                                                tokens.at(i-1).value()=="=" ||
-                                                                                tokens.at(i-1).value()=="=!") &&
-                                                                                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && 
+                (tokens.at(i-1).value()=="<" ||
+                tokens.at(i-1).value()==">" || 
+                tokens.at(i-1).value()==">=" || 
+                tokens.at(i-1).value()=="<=" || 
+                tokens.at(i-1).value()=="=" ||
+                tokens.at(i-1).value()=="=!") &&
+                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedBinary;
-                    tokens.at(i-2)=Token(resultAsOSStream.str());
-                    tokens.erase(tokens.begin()+i-1);
-                    tokens.erase(tokens.begin()+i-1);
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-2)=Token(evaluatedBinary);
+                    tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }
             }
             else if(pass==LOGICALS && i>1)
             {
-                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && (tokens.at(i-1).value()=="AND" ||
-                                                                                tokens.at(i-1).value()=="OR" || 
-                                                                                tokens.at(i-1).value()=="XOR" || 
-                                                                                tokens.at(i-1).value()=="AROUND" || 
-                                                                                tokens.at(i-1).value()=="NOR") &&
-                                                                                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
+                if(tokens.at(i-2).typeCategory()==tokenCategory_t::NUMBER && 
+                (tokens.at(i-1).value()=="AND" ||
+                tokens.at(i-1).value()=="OR" || 
+                tokens.at(i-1).value()=="XOR" || 
+                tokens.at(i-1).value()=="AROUND" || 
+                tokens.at(i-1).value()=="NOR") &&
+                tokens.at(i).typeCategory()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
-                    resultAsOSStream << evaluatedBinary;
-                    tokens.at(i-2)=Token(resultAsOSStream.str());
-                    tokens.erase(tokens.begin()+i-1);
-                    tokens.erase(tokens.begin()+i-1);
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();
+                    tokens.at(i-2)=Token(evaluatedBinary);
+                    tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }
             }
@@ -1875,11 +1804,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
     }
     if(tokens.size()==1 && tokens.at(0).number(xValue)==-0) tokens.at(0)=Token("0");
     if(tokens.size()==1 && tokens.at(0).type()==token_t::VARIABLE) return xValue;
-    if constexpr (std::is_same<T,cpp_dec_float_100>::value)
-    {
-        if(tokens.size()==1 && (tokens.at(0).type()==token_t::NUMBER|| tokens.at(0).type()==token_t::CONSTANT)) return static_cast<cpp_dec_float_100>(tokens.at(0).value());
-    }
-    if(tokens.size()==1 && (tokens.at(0).type()==token_t::NUMBER|| tokens.at(0).type()==token_t::CONSTANT)) return std::stold(tokens.at(0).value());
+    if(tokens.size()==1 && (tokens.at(0).type()==token_t::NUMBER|| tokens.at(0).type()==token_t::CONSTANT)) return tokens.at(0).number(xValue);
     
 
     if(globals::errorMessage=="" && !globals::passedCalculationsFile) globals::errorMessage+="Malformed expression\n";
@@ -2025,23 +1950,23 @@ T evaluateLcm( const Token &arg, const T xValue)
     {
         if(argVals.at(i)<0) argVals.at(i)=-argVals.at(i);
     }
+    if(argVals.size()==1) return argVals.at(0);
     numLeft=argVals.at(0); //a
     numRight=argVals.at(1); //b
     while(argVals.at(1)!=0)
     {
         tempValue=argVals.at(1); //b
-        argVals.at(1)=boost::math::ccmath::fmod(argVals.at(0),argVals.at(1));
+        argVals.at(1)=fmod(argVals.at(0),argVals.at(1));
         argVals.at(0)=tempValue; 
     }
     argVals.at(0)=(numLeft*numRight)/argVals.at(0);
     argVals.erase(argVals.begin()+1);
     if(argVals.size()>=2)
     {
-        numberAsOSStream<<"lcm(";
         for(size_t i{}; i<argVals.size(); i++)
         {
             numberAsOSStream<<argVals.at(i);
-            if(i!=argVals.size()-1) numberAsOSStream<<',';
+            numberAsOSStream<<',';
         }
         Token newArg{numberAsOSStream.str()};
         argVals.at(0) = evaluateLcm(newArg,xValue);
@@ -2057,7 +1982,6 @@ T evaluateGcf( const Token &arg, const T xValue)
     std::ostringstream numberAsOSStream;
     std::vector<T> argVals;
     T tempValue{};
-    std::string numberAsString;
     if(evaluateArgs(arg, xValue, argVals)) return NAN;
     if(globals::options.graph)
     {
@@ -2072,7 +1996,7 @@ T evaluateGcf( const Token &arg, const T xValue)
         while(argVals.at(1)>0)
         {
             tempValue=argVals.at(1);
-            argVals.at(1)=boost::math::ccmath::fmod(argVals.at(0),argVals.at(1));
+            argVals.at(1)=fmod(argVals.at(0),argVals.at(1));
             argVals.at(0)=tempValue; 
         }
         argVals.erase(argVals.begin()+1);
@@ -2089,15 +2013,15 @@ T evaluateRndint( const Token &arg, const T xValue)
     std::string currentToken;
     int nestingLevel{};
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
-    if(argVals.size()==0) return 0;
+    
     if(argVals.size()==1) return argVals.at(0);
     // std::cout<<"\nResults: "<<argVals.at(0) << ',' << argVals.at(1);
 
-    if(argVals.at(0)!=argVals.at(0) || argVals.at(1)!=argVals.at(1)) return 0;
+    if(argVals.at(0)!=argVals.at(0) || argVals.at(1)!=argVals.at(1)) return 0; // Check for NAN
 
-    if(round(argVals.at(0)) > round(argVals.at(1))) std::swap(argVals.at(0), argVals.at(1));
+    if(argVals.at(0) > argVals.at(1)) std::swap(argVals.at(0), argVals.at(1));
 
-    std::uniform_int_distribution<> intDist(static_cast<int>(round(argVals.at(0))),static_cast<int>(round(argVals.at(1))));
+    std::uniform_int_distribution<> intDist(static_cast<int>(argVals.at(0)),static_cast<int>(argVals.at(1)));
     return intDist(randomMt);
 }
 
@@ -2178,7 +2102,7 @@ T evaluateSmax( const Token &arg, const T xValue)
     std::string currentToken;
 
     if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()<2) return argVals.at(0);
     if(argVals.size()==2) argVals.push_back(0.5);
 
@@ -2199,7 +2123,7 @@ T evaluateSmin( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()<2) return argVals.at(0);
     if(argVals.size()==2) argVals.push_back(0.5);
     T min = argVals.at(0);
@@ -2217,7 +2141,7 @@ T evaluateMix( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     else if(argVals.size()<2) return argVals.at(0);
     else if(argVals.at(2)>=1) return argVals.at(1);
     else if(argVals.at(2)<=0) return argVals.at(0);
@@ -2233,7 +2157,7 @@ T evaluateSabs( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()<2) argVals.emplace_back(0.1); // Default argument
     T enumerator = argVals.at(1)-abs(argVals.at(0));
     if(enumerator<0) enumerator=0;
@@ -2248,7 +2172,7 @@ T evaluateIf( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,3)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()==1) return !(!argVals.at(0));
     if(argVals.size()==2)
     {
@@ -2269,18 +2193,33 @@ T evaluateRound( const Token &arg, const T xValue)
 {
     std::vector<T> argVals;
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
-    if(argVals.size()==0) return NAN;
-    if(argVals.size()==1) return round(argVals.at(0));
+    
+    if(argVals.size()==1 || argVals.at(1)<1) return round(argVals.at(0));
 
     if(argVals.at(1)>100) argVals.at(1)=100;
     else if(argVals.at(1)<0) argVals.at(1)=0;
-    if(argVals.at(1)<0.5) return round(argVals.at(0));
     
-    argVals.at(1)=round(argVals.at(1));
-    return argVals.at(0)-remainder(argVals.at(0),1/pow(10,round(argVals.at(1))));
+    argVals.at(1)=floor(argVals.at(1));
+    return argVals.at(0)-remainder(argVals.at(0),1/pow(10,argVals.at(1)));
 }
 
-// x-remainder(x,1/pow(10,round(decimalplaces)))
+// x-remainder(x,1/pow(10,floor(decimalplaces)))
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+T evaluateTrunc( const Token &arg, const T xValue)
+{
+    std::vector<T> argVals;
+    if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
+    
+    if(argVals.size()==1 || argVals.at(1)<1) return trunc(argVals.at(0));
+
+    if(argVals.at(1)>100) argVals.at(1)=100;
+    else if(argVals.at(1)<0) argVals.at(1)=0;
+    
+    argVals.at(1)=floor(argVals.at(1));
+    return argVals.at(0)-fmod(argVals.at(0),1/pow(10,argVals.at(1)));
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2290,20 +2229,20 @@ T evaluateRoot( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()==1) argVals.emplace_back(2); // Default argument
 
     // std::swap(argVals.at(0),argVals.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
     Frac frac {decimalToFraction(argVals.at(1))};
     if(argVals.at(1)==0) return NAN;
-    if(abs(frac.x)!=INFINITY)
+    if(abs(frac.numer)!=INFINITY)
     {
-        if(fmod(frac.x,2)==1 && fmod(frac.y,2)==0 && argVals.at(0)<0)
+        if(abs(fmod(frac.numer,2))==1 && fmod(frac.denom,2)==0 && argVals.at(0)<0)
         {
             return pow(-argVals.at(0),1/argVals.at(1));
         }
-        else if(fmod(frac.x,2)==1 && fmod(frac.y,2)==1 && argVals.at(0)<0)
+        else if(abs(fmod(frac.numer,2))==1 && abs(fmod(frac.denom,2))==1 && argVals.at(0)<0)
         {
             return -pow(-argVals.at(0),1/argVals.at(1));
         }
@@ -2319,7 +2258,7 @@ T evaluateLog( const Token &arg, const T xValue)
     std::vector<T> argVals;
     std::string currentToken;
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
-    if(argVals.size()==0) return NAN;
+    
     if(argVals.size()==1) argVals.emplace(argVals.begin(),10); // Default argument
     return log(argVals.at(1))/log(argVals.at(0));
 }
@@ -2327,38 +2266,36 @@ T evaluateLog( const Token &arg, const T xValue)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringRight, const T xValue)
+T evaluateBinary(Token &numberTokenLeft, Token &operation, Token &numberTokenRight, const T xValue)
 {
     if(globals::error) return NAN;
-    T numberLeft{numberStringLeft.number(xValue)};
-    T numberRight{numberStringRight.number(xValue)};
+    T numberLeft{numberTokenLeft.number(xValue)};
+    T numberRight{numberTokenRight.number(xValue)};
 
     if(operation.value()=="+") return numberLeft+numberRight;
-    else if(operation.value()=="*" || operation.value()=="h*") return numberLeft*numberRight;
-    else if(operation.value()=="/") return numberLeft/numberRight;
-    else if(operation.value()=="^" || operation.value()=="**") 
+    if(operation.value()=="*" || operation.value()=="h*") return numberLeft*numberRight;
+    if(operation.value()=="/" || operation.value()==":") return numberLeft/numberRight;
+    if(operation.value()=="^" || operation.value()=="**") 
     {
         Frac frac {decimalToFraction(numberRight)};
-        std::string fractionAsString = std::to_string(frac.x) + '/' + std::to_string(frac.y);
-        if(abs(frac.x)!=INFINITY && abs(calculation(getTokens(fractionAsString), xValue) - numberRight) < 0.0000000001)
+        std::string fractionAsString = std::to_string(frac.numer) + '/' + std::to_string(frac.denom);
+        if(abs(frac.numer)!=INFINITY && abs(calculation(getTokens(fractionAsString,false,true), xValue) - numberRight) < 0.0000000001)
         {
-            if(fmod(frac.y,2)==1 && fmod(frac.x,2)==0 && numberLeft<0)
+            if(abs(fmod(frac.denom,2))==1 && fmod(frac.numer,2)==0 && numberLeft<0)
             {
                 return pow(-numberLeft,numberRight);
             }
-            else if(fmod(frac.y,2)==1 && fmod(frac.x,2)==1 && numberLeft<0)
+            else if(abs(fmod(frac.denom,2))==1 && abs(fmod(frac.numer,2))==1 && numberLeft<0)
             {
                 return -pow(-numberLeft,numberRight);
             }
         }
         return pow(numberLeft, numberRight);
     }
-    else if(operation.value()=="mod" || operation.value()=="%")
-    {
-        if(numberLeft<=0 && numberRight>=0 || numberLeft>=0 && numberRight<=0) return fmod(numberLeft,numberRight)+numberRight;
-        else return fmod(numberLeft,numberRight);
-    }
-
+    if(operation.value()=="mod" || operation.value()=="%") return numberLeft-numberRight*floor(numberLeft/numberRight);
+    if(operation.value()=="fmod") return fmod(numberLeft,numberRight);
+    if(operation.value()=="rmod") return remainder(numberLeft,numberRight);
+    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::options.aroundTruthinessLeniency;
     if(operation.value()=="<") return numberLeft<numberRight;
     if(operation.value()==">") return numberLeft>numberRight;    
     if(operation.value()=="=") return numberLeft==numberRight;
@@ -2369,10 +2306,10 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
     if(operation.value()=="AND") return numberLeft&&numberRight;
     if(operation.value()=="XOR") return (!numberLeft)!=(!numberRight);
     if(operation.value()=="NOR") return (numberLeft==0)&&(numberRight==0);
-    if(operation.value()=="AROUND") return abs(numberLeft-numberRight)<=globals::options.aroundTruthinessLeniency;
 
-    else if(operation.value()=="nPk") return (tgamma(numberLeft+1)/tgamma(numberLeft-numberRight+1));
-    else if(operation.value()=="nCk") return (tgamma(numberLeft+1)/(tgamma(numberRight+1)*tgamma(numberLeft-numberRight+1)));
+
+    if(operation.value()=="nPk") return (tgamma(numberLeft+1)/tgamma(numberLeft-numberRight+1));
+    if(operation.value()=="nCk") return (tgamma(numberLeft+1)/(tgamma(numberRight+1)*tgamma(numberLeft-numberRight+1)));
 
     std::unreachable();
 }
@@ -2380,12 +2317,11 @@ T evaluateBinary(Token &numberStringLeft, Token &operation, Token &numberStringR
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-T evaluateUnary(Token &numberString, Token &operation, const T xValue)
+T evaluateUnary(Token &numberToken, Token &operation, const T xValue)
 {
     if(globals::error) return NAN;
-    T number=numberString.number(xValue);
+    T number=numberToken.number(xValue);
     T result{1};
-    Token e{"e"};
     if(operation.value()=="-") return -number;
 
     if(operation.value()=="sign")
@@ -2449,10 +2385,13 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
         else return round(number);
     }
     if(operation.value()=="floor") return floor(number);
+    if(operation.value()=="trunc") return trunc(number);
     if(operation.value()=="ceil") return ceil(number);
     if(operation.value()=="abs") return abs(number);
     if(operation.value()=="ln") return log(number);
+    if(operation.value()=="ln^2") return pow(log(number),2);
     // if(operation.value()=="log10") return log10(number);
+    Token e{"e"};
     if(operation.value()=="exp") return pow(e.number(xValue),number);
 
     if(operation.value()=="cbrt") return cbrt(number);
@@ -2552,6 +2491,7 @@ T evaluateUnary(Token &numberString, Token &operation, const T xValue)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// The GOAT
 inline bool isNumber(const std::string &input)
 {
     if(input=="") return false;
@@ -2566,12 +2506,16 @@ inline bool isNumber(const std::string &input)
                                                input.at(i)!='.' &&
                                                input.at(i)!='+' &&
                                                input.at(i)!='-') return false;
-    uint dotCount{};
-    uint eCount{};
+    size_t dotCount{};
+    size_t eCount{};
+    size_t exponentLength{};
     bool seenMinus{};
+    
 
-    for(size_t i{}; i<input.length(); i++)
+    for(size_t i{}; i<input.length() && eCount<2; i++)
     {
+        if(eCount) exponentLength++;
+        if(exponentLength>9) return false; // Avoids a really pissy crash.
         if((seenMinus && input.at(i)=='-')||(i>0 && input.at(i)=='-' && input.at(i-1)!='e')) return false;
         if(input.at(0)=='-' && i==0 && input.length()>1)
         {
@@ -2600,10 +2544,10 @@ inline bool isNumber(const std::string &input)
                 return false;
             }
         }
-        if(eCount>1) return false;
 
         if(!isNumberPart(input.at(i))) return false;
     }
+    if(eCount>1) return false;
     return true;
 }
 

@@ -16,14 +16,15 @@
 
 #include <cfloat>
 #include <cmath>
+#include <filesystem>
 #include <stdio.h>          
 #include <stdlib.h>         
 #define GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-
 #include <fstream>
+#include <nfd.hpp>
 
 // Volk headers
 #ifdef IMGUI_IMPL_VULKAN_USE_VOLK
@@ -476,6 +477,8 @@ int main(int, char**)
 
     // Our state ☭
 
+    NFD::Init();
+
     ImVec4 clear_color = ImVec4(0.f, 0.f, 0.f, 0.f);
     io.Fonts->AddFontFromMemoryCompressedTTF(NotoSansMathRegular_compressed_data,NotoSansMathRegular_compressed_size);
 
@@ -525,8 +528,8 @@ int main(int, char**)
     size_t timeStationary{};
     size_t recalculateGraphIndex{static_cast<size_t>(-1)};
     int maxIndividualGraphPoints {8000}; // Maximum number of points per graph calculated for one screen. (There may be more because of memoization when zooming out) 
+    bool isConstantGraph{}; // Constant graphs have less points, so check every point for nearest to mouse, skip checking for discontinuities and zeroes/extremes
 
-    std::pair<std::vector<double>,std::vector<double>> liveGraphPoints;
     std::pair<std::vector<std::vector<double>>,std::vector<std::vector<double>>> graphsPoints{}; // Big boy
     
     // Settings
@@ -535,8 +538,9 @@ int main(int, char**)
     bool markSpecialPoints{true};
     bool gayMode{};
     bool showGayMode{};
+    float gayModeSpeed{0.001};
     
-    bool followImplicitMultiplicationPriorityConvention{true};
+    bool prioritizeImplicitMultiplication{true};
     bool showFractions{true};
     bool interpolateDiscontinuities{};
 
@@ -550,7 +554,7 @@ int main(int, char**)
 
     std::string xMin{"-5"};
     std::string xMax{'5'};
-    std::string xStep="1";
+    std::string xStep={'1'};
     boost::multiprecision::cpp_dec_float_100 xMinFloat{-5};
     boost::multiprecision::cpp_dec_float_100 xMaxFloat{5};
     boost::multiprecision::cpp_dec_float_100 xStepFloat{0.1};
@@ -562,9 +566,8 @@ int main(int, char**)
     bool animateSlider{};
 
     std::vector<Instance> instances{};
-    instances.emplace_back("main"); 
+    instances.emplace_back("main");
     
-
     bool recalculateGraphs{};
 
     // Scripting
@@ -629,6 +632,7 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         {
+            lessetB::globals::debugCoutUsed=false;
             nothing.clear();
             recalculateGraphIndex=static_cast<size_t>(-1);
             auto io = ImGui::GetIO();
@@ -1129,79 +1133,81 @@ int main(int, char**)
                 if (ImGui::BeginMenu("Graph"))
                 {
                     showGraphingMenuHint=false;
-
-                    if(graphsEquations.size()!=0 || true)
+                
+                    if(ImGui::Button("Add"))
                     {
+                        graphsEquations.push_back(std::string(std::to_string(graphsEquations.size()+1)));
+                        recalculateGraphIndex=graphsEquations.size()-1;
+                        graphsPoints.first.emplace_back(std::vector<double>());
+                        graphsPoints.second.emplace_back(std::vector<double>());
+                    }
+
+                    char nameIndex{};
+                    size_t nameNumber{};
+                    size_t nameNumberLength{std::to_string((graphsEquations.size()+17)/18).length()};
+                    if(graphsEquations.size()<19) nameNumberLength=0; 
                     
-                        if(ImGui::Button("Add"))
+                    if(graphsEquations.size()>0) 
+                    {
+                        ImGui::SameLine(53+(nameNumberLength)*5);
+                        if(ImGui::Button("Remove All"))
                         {
-                            graphsEquations.push_back(std::string(std::to_string(graphsEquations.size()+1)));
-                            recalculateGraphIndex=graphsEquations.size()-1;
-                            graphsPoints.first.emplace_back(std::vector<double>());
-                            graphsPoints.second.emplace_back(std::vector<double>());
+                            graphsEquations.clear();
+                            graphsPoints.first.clear();
+                            graphsPoints.second.clear();
+                            lessetB::globals::points.first.clear();
+                            lessetB::globals::points.second.clear();
                         }
+                    }
 
-                        char nameIndex{};
-                        size_t nameNumber{};
-                        size_t nameNumberLength{std::to_string((graphsEquations.size()+17)/18).length()};
-                        if(graphsEquations.size()<19) nameNumberLength=0; 
+                    for(size_t i{}; i<graphsEquations.size(); i++)
+                    {
+                        // Name the first 18 equations f(x) -> w(x), then add a number after the letter for each repitition of names
+                        nameNumber=i/18;
+                        nameIndex=i%18;
+                        char name[1]{}; // Trust
+                        name[0]=nameIndex+'f';
+
+                        if(nameNumber>0) ImGui::Text("%s%lu%s",name,nameNumber+1,"(x) = ");
+                        else ImGui::Text("%s%s",name,"(x) = ");
+
+                        ImGui::SameLine(53+(nameNumberLength)*5);
+
                         
-                        if(graphsEquations.size()>0) 
+
+                        std::string previousEditingGraphEquation = editingGraphEquation;
+                        editingGraphEquation=graphsEquations.at(i);
+                        
+                        if(ImGui::InputText(std::string("##" + std::to_string(i)).c_str(), &editingGraphEquation))
                         {
-                            ImGui::SameLine(53+(nameNumberLength)*5);
-                            if(ImGui::Button("Remove All"))
+                            std::string editingGraphEquationClosedParentheses=editingGraphEquation;
+                            addClosingParentheses(editingGraphEquationClosedParentheses);
+                            if(!(graphsEquations.at(i)==editingGraphEquationClosedParentheses || editingGraphEquationClosedParentheses=="" || editingGraphEquationClosedParentheses.length()>1000))
                             {
-                                graphsEquations.clear();
-                                graphsPoints.first.clear();
-                                graphsPoints.second.clear();
-                                lessetB::globals::points.first.clear();
-                                lessetB::globals::points.second.clear();
+                                std::string graphEquationExpandedMacros = editingGraphEquation;
+                                int unclosedParentheses = addClosingParentheses(editingGraphEquation);
+
+                                graphsEquations.at(i)=editingGraphEquation; 
+                                recalculateGraphIndex=i;
+                                
                             }
                         }
-
-                        for(size_t i{}; i<graphsEquations.size(); i++)
+                        ImGui::SameLine();
+                        if(ImGui::Button(std::string("Remove##" + std::to_string(i)).c_str()))
                         {
-                            // Name the first 18 equations f(x) -> w(x), then add a number after the letter for each repitition of names
-                            nameNumber=i/18;
-                            nameIndex=i%18;
-                            char name[1]{}; // Trust
-                            name[0]=nameIndex+'f';
-
-                            if(nameNumber>0) ImGui::Text("%s%lu%s",name,nameNumber+1,"(x) = ");
-                            else ImGui::Text("%s%s",name,"(x) = ");
-
-                            ImGui::SameLine(53+(nameNumberLength)*5);
-
-                            
-
-                            std::string previousEditingGraphEquation = editingGraphEquation;
-                            editingGraphEquation=graphsEquations.at(i);
-                            
-                            if(ImGui::InputText(std::string("##" + std::to_string(i)).c_str(), &editingGraphEquation))
+                            graphsEquations.erase(graphsEquations.begin()+i);
+                            if(graphsPoints.first.size()!=0)
                             {
-                                if(!(graphsEquations.at(i)==editingGraphEquation || editingGraphEquation==""))
-                                {
-                                    std::string graphEquationExpandedMacros = editingGraphEquation;
-                                    int unclosedParentheses = addClosingParentheses(editingGraphEquation);
-                                    if(unclosedParentheses>=0)
-                                    {
-                                        graphsEquations.at(i)=editingGraphEquation; 
-                                        recalculateGraphIndex=i;
-                                    }
-                                }
-                            }
-                            ImGui::SameLine();
-                            if(ImGui::Button(std::string("Remove##" + std::to_string(i)).c_str()))
-                            {
-                                graphsEquations.erase(graphsEquations.begin()+i);
-                                if(graphsPoints.first.size()!=0)
-                                {
-                                    graphsPoints.first.erase(graphsPoints.first.begin()+i);
-                                    graphsPoints.second.erase(graphsPoints.second.begin()+i);
-                                    recalculateGraphs=true;
-                                }
+                                graphsPoints.first.erase(graphsPoints.first.begin()+i);
+                                graphsPoints.second.erase(graphsPoints.second.begin()+i);
+                                recalculateGraphs=true;
                             }
                         }
+                        if(editingGraphEquation.length()>1000)
+                        {
+                            ImGui::Text("Equation should not be longer than 1000 characters.\nPlease, what are you doing?");
+                        }
+                    
                     }
 
                     ImGui::EndMenu();
@@ -1285,20 +1291,20 @@ int main(int, char**)
 
                             default: {maxIndividualGraphPoints=MAX_GRAPH_POINTS_BASE/2; shownResolution="Low"; break;}
                         }
-                        ImGui::SetNextItemWidth(280.f);
-                        if(ImGui::SliderInt("Resolution for graphing",&maxIndividualGraphPointsMultiplier,1,5,shownResolution.c_str()))
+                        ImGui::SetNextItemWidth(220.f);
+                        if(ImGui::SliderInt("Resolution",&maxIndividualGraphPointsMultiplier,1,5,shownResolution.c_str()))
                         {
                             recalculateGraphs=true;
                         }
                         ImGui::SetItemTooltip("Changes how precisely graphs are calculated, how many points per graph.\nOverkill might be useful for detailed graphs.\nOnly use Too Low if you have many graphs, are creating insane functions or your computer sux.");
 
-                        if(ImGui::Checkbox("Interpolate discontinuities in functions",&interpolateDiscontinuities))
+                        if(ImGui::Checkbox("Connect discontinuities",&interpolateDiscontinuities))
                         {
                             recalculateGraphs=true;
                         }
                         ImGui::SetItemTooltip("This calculator is stupid and doesn't actually know where exactly a discontinuity in a function like 1/x is.\nThus, it tries to approximate it, but sometimes ends up creating visual artifacts in continuous functions like ∛x.");
                         ImGui::SameLine();
-                        ImGui::Checkbox("Mark special points",&markSpecialPoints);
+                        ImGui::Checkbox("Mark points",&markSpecialPoints);
                         ImGui::SetItemTooltip("Mark points where a function is zero, the point closest to the cursor, extremes.");
 
                         options.interpolateDiscontinuities=interpolateDiscontinuities;
@@ -1340,12 +1346,12 @@ int main(int, char**)
                         options.showFractions=showFractions;
                         ImGui::SetItemTooltip("Show some results as fractions or constants instead of decimal numbers.");
                         ImGui::SameLine();
-                        ImGui::Checkbox("Prioritize implicit multiplication",&followImplicitMultiplicationPriorityConvention);
-                        options.prioritizeImplicitMultiplication=followImplicitMultiplicationPriorityConvention;
+                        ImGui::Checkbox("Prioritize implicit multiplication",&prioritizeImplicitMultiplication);
+                        options.prioritizeImplicitMultiplication=prioritizeImplicitMultiplication;
                         ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
 
                         ImGui::SetNextItemWidth(350);
-                        ImGui::DragInt("##", &lessetB::globals::decimalPrecision,0.2,1,100,"Decimal places in output: %d",ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragInt("##", &lessetB::globals::decimalPrecision,0.2,1,MAXOUTPUTPRECISION,"Decimal places in output: %d",ImGuiSliderFlags_AlwaysClamp);
                         ImGui::SetItemTooltip("Changes amount of decimal places shown in output.");
 
                         ImGui::EndMenu();
@@ -1353,8 +1359,9 @@ int main(int, char**)
                     ImGui::Separator();
                     if(ImGui::BeginMenu("Style"))
                     {
-                        ImGui::Text("Save and Load styles in ini format.\nCheck the directory of the executable for the file.");
-                        if(ImGui::SliderFloat("Hue",&hueModifier,0,1))
+                        ImGui::Text("Save and Load styles in ini format.");
+                        if(!showGayMode) ImGui::SetNextItemWidth(300);
+                        if(ImGui::SliderFloat("##",&hueModifier,0,1,"Hue: %.3f"))
                         {
                             for(size_t i{6}; i<ImGuiCol_COUNT; i++)
                             {
@@ -1365,8 +1372,9 @@ int main(int, char**)
                                 ImGui::ColorConvertHSVtoRGB( col.x, col.y, col.z,style.Colors[i].x,style.Colors[i].y,style.Colors[i].z);
                             }
                         }
-
-                        if(ImGui::SliderFloat("Saturation",&saturationModifier,0,1))
+                        
+                        if(!showGayMode) ImGui::SetNextItemWidth(300);
+                        if(ImGui::SliderFloat("##1",&saturationModifier,0,1, "Saturation: %.3f"))
                         {
                             for(size_t i{6}; i<ImGuiCol_COUNT; i++)
                             {
@@ -1379,21 +1387,50 @@ int main(int, char**)
                                 ImGui::ColorConvertHSVtoRGB( col.x, col.y, col.z,style.Colors[i].x,style.Colors[i].y,style.Colors[i].z);
                             }
                         }
-
+                        
                         if(ImGui::Button("Save Style"))
                         {
-                            ImGui::SaveStylesTo("LessetGStyle.ini");
+                            if(ImGui::IsKeyDown(ImGuiMod_Shift))
+                            {
+                            nfdu8char_t *outPath{};
+                            nfdsavedialogu8args_t args = {0};
+                            args.defaultName="LessetGStyle.ini";
+                            nfdresult_t result = NFD_SaveDialogU8_With(&outPath, &args);
+                            if(result == NFD_OKAY) ImGui::SaveStylesTo(std::string(outPath).c_str());
+                            }
+                            else ImGui::SaveStylesTo("LessetGStyle.ini");
+                            
                         }
+                        ImGui::SetItemTooltip("Use shift to open a file dialog instead of saving to executable directory.");
                         ImGui::SameLine();
                         if(ImGui::Button("Load Style"))
                         {
-                            ImGui::LoadStyleFrom("LessetGStyle.ini");
+                            if(std::filesystem::exists(std::string(std::string(std::filesystem::current_path())+std::string("/LessetGStyle.ini"))) && !ImGui::IsKeyDown(ImGuiMod_Shift))
+                                ImGui::LoadStyleFrom("LessetGStyle.ini");
+                            else
+                            {
+                                nfdu8char_t *outPath{};
+                                nfdopendialogu8args_t args = {0};
+                                nfdresult_t result = NFD_OpenDialogU8_With(&outPath, &args);
+                                if(result == NFD_OKAY)
+                                {
+                                    ImGui::LoadStyleFrom(outPath);
+                                }
+                            }
                         }
+                        if(std::filesystem::exists(std::string(std::string(std::filesystem::current_path())+std::string("/LessetGStyle.ini"))))
+                        {
+                            ImGui::SetItemTooltip("Use shift to open a file dialog instead of loading from executable directory.");
+                        }
+                        else ImGui::SetItemTooltip("Save \"LessetGStyle.ini\" to the executable's path to auto load it on startup.");
 
                         if(showGayMode)
                         {
                             ImGui::SameLine();
-                            ImGui::Checkbox("Gay Mode", &gayMode);
+                            ImGui::Checkbox("Gay", &gayMode);
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(98);
+                            ImGui::DragFloat("##2", &gayModeSpeed,0.00003,-0.01,0.01,"Speed: %.4f",ImGuiSliderFlags_AlwaysClamp);
                         }
 
                         ImGui::EndMenu();
@@ -1439,40 +1476,46 @@ int main(int, char**)
                 {
                     if(ImGui::BeginMenu("Operators"))
                     {   
-                        if(ImGui::MenuItem("+")) ImGui::SetClipboardText("+");
+                        if(ImGui::MenuItem("+")) equation.append("+");
                         ImGui::SetItemTooltip("Adds left and right or does nothing (unary plus). Is a tooltip really needed for this..?");
                         
-                        if(ImGui::MenuItem("-")) ImGui::SetClipboardText("-");
+                        if(ImGui::MenuItem("-")) equation.append("-");
                         ImGui::SetItemTooltip("Subtracts left and right or negates right.");
 
-                        if(ImGui::MenuItem("×")) ImGui::SetClipboardText("×");
+                        if(ImGui::MenuItem("×")) equation.append("×");
                         ImGui::SetItemTooltip("Multiplication. (*)");
 
-                        if(ImGui::MenuItem("÷")) ImGui::SetClipboardText("÷");
-                        ImGui::SetItemTooltip("Division... please not by 0. (/)");
+                        if(ImGui::MenuItem("/")) equation.append("/");
+                        ImGui::SetItemTooltip("Division... please not by 0. (÷)");
 
-                        if(ImGui::MenuItem("**")) ImGui::SetClipboardText("**");
+                        if(ImGui::MenuItem("**")) equation.append("**");
                         ImGui::SetItemTooltip("Exponentiation. Defined when needed... I hope. (^)");
 
-                        if(ImGui::MenuItem("!")) ImGui::SetClipboardText("!");
+                        if(ImGui::MenuItem("!")) equation.append("!");
                         ImGui::SetItemTooltip("Factorial. (Uses Gamma function)");
 
-                        if(ImGui::MenuItem("!!")) ImGui::SetClipboardText("!!");
+                        if(ImGui::MenuItem("!!")) equation.append("!!");
                         ImGui::SetItemTooltip("Semi-Factorial. Integers only!");
 
-                        if(ImGui::MenuItem("%")) ImGui::SetClipboardText("%");
-                        ImGui::SetItemTooltip("Modulus, division with remainder. (mod)");
+                        if(ImGui::MenuItem("mod")) equation.append("mod");
+                        ImGui::SetItemTooltip("Modulus, division with remainder. (%%)\nFloors the result of the division. fmod truncates it, rmod rounds it.");
 
-                        if(ImGui::MenuItem("nPk")) ImGui::SetClipboardText("nPk");
+                        // if(ImGui::MenuItem("fmod")) equation.append("fmod");
+                        // ImGui::SetItemTooltip("Also modulus, but like, different. Idk.\nThis one acts like the underlying function fmod(), %% is ...more mod than this.");
+
+                        // if(ImGui::MenuItem("rmod")) equation.append("rmod");
+                        // ImGui::SetItemTooltip("Like fmod, but rounds result of division instead of truncating. Idk.");
+
+                        if(ImGui::MenuItem("nPk")) equation.append("nPk");
                         ImGui::SetItemTooltip("Permutation calculation.");
 
-                        if(ImGui::MenuItem("nCk")) ImGui::SetClipboardText("nCk");
+                        if(ImGui::MenuItem("nCk")) equation.append("nCk");
                         ImGui::SetItemTooltip("Binomial coefficient calculation, whatever that means.");
 
-                        if(ImGui::MenuItem("|expr|")) ImGui::SetClipboardText("||");
+                        if(ImGui::MenuItem("|expr|")) equation.append("||");
                         ImGui::SetItemTooltip("Absolute value.");
 
-                        if(ImGui::MenuItem("(expr)")) ImGui::SetClipboardText("()");
+                        if(ImGui::MenuItem("(expr)")) equation.append("()");
                         ImGui::SetItemTooltip("Parentheses.");
 
                         ImGui::EndMenu();
@@ -1651,10 +1694,16 @@ int main(int, char**)
                             ImGui::SetItemTooltip("Rounds number to nearest even integer (Banker's Rounding).");
 
                             if(ImGui::MenuItem("floor")) equation.append("floor");
-                            ImGui::SetItemTooltip("Floors number to its integer part. π => 3");
+                            ImGui::SetItemTooltip("Lowers number to next integer.");
 
                             if(ImGui::MenuItem("ceil")) equation.append("ceil");
-                            ImGui::SetItemTooltip("Raises number to next integer. π => 4");
+                            ImGui::SetItemTooltip("Raises number to next integer.");
+
+                            if(ImGui::MenuItem("trunc")) equation.append("trunc");
+                            ImGui::SetItemTooltip("Truncates number to nearest integer closer to 0.");
+
+                            if(ImGui::MenuItem("trunc()")) equation.append("trunc(expr, decimal places)");
+                            ImGui::SetItemTooltip("Truncates number to however many decimal places specified.");
 
                             if(ImGui::MenuItem("abs")) equation.append("abs");
                             ImGui::SetItemTooltip("Absolute value as a function.");
@@ -1825,7 +1874,7 @@ int main(int, char**)
                     }
                     if(ImGui::BeginMenu("Credits"))
                     {   
-                        ImGui::Text("Glued together by Dummigame.\nAlso responsible for the calculator behind this n stuff.\nI am not that good at math btw. If this thing tells you 2+2=5, call me.\n\nLibraries used in this project:\nImGui, ImPlot, ImStyle Boost lib\n(MIT License, https://github.com/ocornut/imgui,\nMIT License, https://github.com/epezent/implot,\nBSD 3-Clause License, https://github.com/csprite/ImStyle,\nBoost Software License, https://www.boost.org/LICENSE_1_0.txt)");
+                        ImGui::Text("Glued together by Dummigame.\nAlso responsible for the calculator behind this n stuff.\nI am not that good at math btw. If this thing tells you 2+2=5, call me.\n\nLibraries used in this project:\nImGui, ImPlot, ImStyle, Boost lib, Native File Dialog Extended \n(MIT License, https://github.com/ocornut/imgui,\nMIT License, https://github.com/epezent/implot,\nBSD 3-Clause License, https://github.com/csprite/ImStyle,\nBoost Software License, https://www.boost.org/LICENSE_1_0.txt\nzlib License, https://github.com/btzy/nativefiledialog-extended)");
 
                         ImGui::EndMenu();
                     }
@@ -1855,7 +1904,7 @@ int main(int, char**)
                         if(i==ImGuiCol_MenuBarBg) continue;
                         ImVec4 col{0,0,0,1};
                         ImGui::ColorConvertRGBtoHSV(style.Colors[i].x,style.Colors[i].y,style.Colors[i].z, col.x, col.y, col.z);
-                        col.x=col.x+0.001;
+                        col.x=col.x+gayModeSpeed;
                         if(col.x>1) col.x=0;
                         ImGui::ColorConvertHSVtoRGB( col.x, col.y, col.z,style.Colors[i].x,style.Colors[i].y,style.Colors[i].z);
                     }  
@@ -1921,16 +1970,28 @@ int main(int, char**)
                 resultPlusEquals = "  =  " + std::to_string(static_cast<int>(1.0/io.DeltaTime));
             }
 
-            if(equation=="gayMode")
+            else if(equation=="gayMode")
             {
                 resultPlusEquals = "  =  check style options";
                 showGayMode=true;
             }
 
-            if(equation=="showSliderOption")
+            else if(equation=="enableDebug")
             {
-                showSliderOption=true;
+                resultPlusEquals = "  =  Enabled debug console output";
+                lessetB::globals::debugCout=true;
+            }
+
+            else if(equation=="disableDebug")
+            {
+                resultPlusEquals = "  =  Disabled debug console output";
+                lessetB::globals::debugCout=false;
+            }
+
+            else if(equation=="showSliderOption")
+            {
                 resultPlusEquals = "  =  cheets on.";
+                showSliderOption=true;
             }
 
             ImGui::SameLine(io.DisplaySize.x/3+11);
@@ -2052,6 +2113,11 @@ int main(int, char**)
                     )
                     {
                         if(recalculateGraphIndex!=static_cast<size_t>(-1)) downsizeGraphIndex=recalculateGraphIndex;
+                        if(lessetB::globals::debugCout)
+                        {
+                            std::cout<<"Recalculate single graph "<< graphsEquations.at(downsizeGraphIndex) << '\n';
+                            lessetB::globals::debugCoutUsed=true;
+                        }
                         nonEmptyGraphEquation=graphsEquations.at(downsizeGraphIndex);
                         lessetB::Options graphOptions{true,
                                                     limits.X.Min,
@@ -2059,7 +2125,7 @@ int main(int, char**)
                                                     abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
                                                     (aroundTruthinessLeniencyFloat),
                                                     interpolateDiscontinuities,
-                                                    followImplicitMultiplicationPriorityConvention};
+                                                    prioritizeImplicitMultiplication};
                         lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                         graphsPoints.first.at(downsizeGraphIndex)=lessetB::globals::points.first;
@@ -2073,10 +2139,14 @@ int main(int, char**)
 
                         const double dXMax{limits.X.Max-prevLimits.X.Max};
                         const double dXMaxScreenProportion{abs(dXMax)/(limits.X.Max-limits.X.Min)};
-
                         if(dXMin<0)
                             for(size_t j{}; j<graphsEquations.size() && graphsPoints.first.at(j).at(0)>limits.X.Min; j++)
                             {
+                                if(lessetB::globals::debugCout)
+                                {
+                                    std::cout<<"Prepending to graph "<< graphsEquations.at(j) << '\n';
+                                    lessetB::globals::debugCoutUsed=true;
+                                }
                                 nonEmptyGraphEquation=graphsEquations.at(j);
 
                                 lessetB::Options graphOptions{true,
@@ -2085,16 +2155,20 @@ int main(int, char**)
                                                             abs(dXMin)/(maxIndividualGraphPoints*dXMinScreenProportion/averagedPrecisionDivisor),
                                                             (aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
-                                                            followImplicitMultiplicationPriorityConvention};
+                                                            prioritizeImplicitMultiplication};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.at(j).insert_range(graphsPoints.first.at(j).begin(),lessetB::globals::points.first);
                                 graphsPoints.second.at(j).insert_range(graphsPoints.second.at(j).begin(),lessetB::globals::points.second);
                             }
-
                         if(dXMax>0)
                             for(size_t j{}; j<graphsEquations.size() && graphsPoints.first.at(j).at(graphsPoints.first.at(j).size()-1)<limits.X.Max; j++)
                             {
+                                if(lessetB::globals::debugCout)
+                                {
+                                    std::cout<<"Appending to graph "<< graphsEquations.at(j) << '\n';
+                                    lessetB::globals::debugCoutUsed=true;
+                                }
                                 nonEmptyGraphEquation=graphsEquations.at(j);
 
                                 lessetB::Options graphOptions{true,
@@ -2103,7 +2177,7 @@ int main(int, char**)
                                                             abs(dXMax)/(maxIndividualGraphPoints/averagedPrecisionDivisor*dXMaxScreenProportion),
                                                             (aroundTruthinessLeniencyFloat),
                                                             interpolateDiscontinuities,
-                                                            followImplicitMultiplicationPriorityConvention};
+                                                            prioritizeImplicitMultiplication};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.at(j).append_range(lessetB::globals::points.first);
@@ -2114,6 +2188,11 @@ int main(int, char**)
                     // Recalculate when zooming in
                     else if(timeStationary==0 && graphsPoints.first.size()<MANY_GRAPHS && zoomedIn)
                     {
+                        if(lessetB::globals::debugCout)
+                        {
+                            std::cout<<"Recalculating from zooming in\n";
+                            lessetB::globals::debugCoutUsed=true;
+                        }
                         graphsPoints.first.clear();
                         graphsPoints.second.clear();
                         for(size_t j{}; 
@@ -2129,7 +2208,7 @@ int main(int, char**)
                                                         abs(limits.X.Max-limits.X.Min)/(maxIndividualGraphPoints/averagedPrecisionDivisor),
                                                         (aroundTruthinessLeniencyFloat),
                                                         interpolateDiscontinuities,
-                                                        followImplicitMultiplicationPriorityConvention};
+                                                        prioritizeImplicitMultiplication};
                             lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                             graphsPoints.first.emplace_back(lessetB::globals::points.first);
@@ -2141,6 +2220,11 @@ int main(int, char**)
                     // Recalculate at a high precision
                     else if(timeStationary==HIGH_PRECISION_DRAW_DELAY || recalculateGraphs)
                     {
+                        if(lessetB::globals::debugCout)
+                        {
+                            std::cout<<"Recalculating at high precision\n";
+                            lessetB::globals::debugCoutUsed=true;
+                        }
                         recalculateGraphs=false;
                         if(graphsEquations.size()>=MANY_GRAPHS && drawMany_Graphs || graphsEquations.size()<MANY_GRAPHS)
                         {
@@ -2149,7 +2233,7 @@ int main(int, char**)
                             for(size_t j{}; j<graphsEquations.size(); j++)
                             {
                                 nonEmptyGraphEquation=graphsEquations.at(j);
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,followImplicitMultiplicationPriorityConvention};
+                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,prioritizeImplicitMultiplication};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.emplace_back(lessetB::globals::points.first);
@@ -2160,7 +2244,10 @@ int main(int, char**)
                     bool hasShownMousePointText{};
                     for(size_t j{}; j<graphsPoints.first.size(); j++) // Disconnect discontinuities and hand points to ImPlot
                     {
-                        
+                        // Constant graphs have less points.
+                        if(j>1 && graphsPoints.first.at(j).size()<graphsPoints.first.at(j-1).size()) isConstantGraph=true; 
+                        else if(j>1 && graphsPoints.first.at(j).size()>graphsPoints.first.at(j-1).size()) isConstantGraph=false;
+
                         if(graphsEquations.size()>=MANY_GRAPHS && timeStationary<HIGH_PRECISION_DRAW_DELAY || graphsEquations.size()>=MANY_GRAPHS && !drawMany_Graphs) break;
                         
                         if(graphsEquations.size()<MANY_GRAPHS && !interpolateDiscontinuities)
@@ -2188,8 +2275,9 @@ int main(int, char**)
                                                 (difference<previousDifference*MAX_CHANGE_FACTOR_FIRST && difference<0 && previousDifference<0) ||  
                                                 (difference>-previousDifference*MAX_CHANGE_FACTOR_FIRST && difference<0 && previousDifference>0) || 
                                                 (-difference>previousDifference*MAX_CHANGE_FACTOR_FIRST && difference>0 && previousDifference<0)    
-                                            ) && abs(difference)/abs(limits.Y.Max-limits.Y.Min)>0.03 // Don't see differences near 0 as discontinuities
-                                        ))
+                                            )
+                                        ) && abs(difference)/abs(limits.Y.Max-limits.Y.Min)>0.03 // Don't see differences near 0 as discontinuities
+                                      )
                                     {
                                         if(!isNoisy(graphsPoints.first.at(j),graphsPoints.second.at(j),i,maxIndividualGraphPointsMultiplier))
                                         {
@@ -2213,9 +2301,11 @@ int main(int, char**)
                         size_t increment = 3;
                         
                         if(timeStationary>=100) increment=6;
+                        if(isConstantGraph) increment=1;
                         if(markSpecialPoints && graphsEquations.size()<25 && !IsPlotHidden() && ImPlot::IsPlotHovered())
                             for(size_t i{increment}; i<graphsPoints.first.at(j).size()-20; i+=increment)
                             {
+                                // Mouse point
                                 if(abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i)) < abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i+increment)) &&
                                 abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i)) < abs(ImPlot::GetPlotMousePos().x-graphsPoints.first.at(j).at(i-increment)) &&
                                 !hasShownPoint) 
@@ -2237,9 +2327,12 @@ int main(int, char**)
                                     }
                                 }
 
+                                // Extremes and zeroes
                                 if(((graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i+increment) && graphsPoints.second.at(j).at(i)<graphsPoints.second.at(j).at(i-increment)) ||
                                     (graphsPoints.second.at(j).at(i)>graphsPoints.second.at(j).at(i+increment) && graphsPoints.second.at(j).at(i)>graphsPoints.second.at(j).at(i-increment))) &&
-                                    (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50))
+                                    (abs(graphsPoints.first.at(j).at(i)-xPreviousPointMarked)>abs(limits.X.Max-limits.X.Min)/50) &&
+                                    !isConstantGraph
+                                  )
                                 {
                                     bool hasNAN{};
                                     for(size_t k{i}; k<i+increment; k++)
@@ -2315,6 +2408,7 @@ int main(int, char**)
             }
             ImGui::End();
         }
+        if(lessetB::globals::debugCoutUsed) std::cout<<'\n';
 
         // Rendering
         ImGui::Render();        ImDrawData* main_draw_data = ImGui::GetDrawData();        const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);        wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;        wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;        wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;        wd->ClearValue.color.float32[3] = clear_color.w;        if (!main_is_minimized)FrameRender(wd, main_draw_data);
@@ -2335,7 +2429,7 @@ bool isNoisy(const std::vector<double> &pointsX, const std::vector<double> &poin
     bool rising{};
     bool prevRising{};
     int j=i-10;
-    if(j<0) return true;
+    if(j<0) return false;
     {
         for(; j<i+10 && j<pointsX.size()-1; j++)
         {
