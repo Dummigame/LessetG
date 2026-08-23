@@ -533,7 +533,7 @@ int main(int, char**)
     std::pair<std::vector<std::vector<double>>,std::vector<std::vector<double>>> graphsPoints{}; // Big boy
     
     // Settings
-    lessetB::Options options{0,-5,5,1,2,true};
+    lessetB::Options options{false,-5,5,1,2,true};
     bool graph{};
     bool markSpecialPoints{true};
     bool gayMode{};
@@ -651,11 +651,11 @@ int main(int, char**)
                     //ImGui::MenuItem("Everything about automation.",NULL,false,false);
                     if(ImGui::BeginMenu("Instances"))
                     {
-                        if(ImGui::BeginMenu("Add instances"))
+                        if(ImGui::BeginMenu("Add Instances"))
                         {
-                            ImGui::InputText("New instance name",&newInstanceName);
+                            ImGui::InputText("New Instance Name",&newInstanceName);
 
-                            if(ImGui::Button("Add instance"))
+                            if(ImGui::Button("Add Instance"))
                             {
                                 bool nameOkay{};
                                 if(newInstanceName!="") nameOkay=true;
@@ -668,7 +668,7 @@ int main(int, char**)
                             ImGui::EndMenu(); 
                         }     
                         
-                        if(instances.size()>1)if(ImGui::BeginMenu("Select instance"))
+                        if(instances.size()>1)if(ImGui::BeginMenu("Select Instance"))
                         {
                             for(size_t i{0}; i<instances.size(); i++)
                             {
@@ -681,7 +681,7 @@ int main(int, char**)
                             ImGui::EndMenu();
                         }
 
-                        if(instances.size()>1) if(ImGui::BeginMenu("Remove instances"))
+                        if(instances.size()>1) if(ImGui::BeginMenu("Remove Instances"))
                         {
                             ImGui::MenuItem("Click an instance to remove it.",NULL,false,false);
                             for(size_t i{1}; i<instances.size(); i++)
@@ -697,8 +697,8 @@ int main(int, char**)
 
                         ImGui::EndMenu();
                     }
-                    // Run Menu (Run Script Menu)
                     ImGui::SetItemTooltip("Encapsulate calculator data.");
+                    // Run Menu (Run Script Menu)
                     if (ImGui::BeginMenu("Run"))
                     {
                         if(selectedInstance==0) ImGui::Text("You are using the main instance.");
@@ -798,7 +798,7 @@ int main(int, char**)
                                             }
                                             size_t subEquationLength=subEquation.length();
                                             lessetB::Options ifOptions=options;
-                                            ifOptions.showFractions=false;
+                                            ifOptions.prettyPrinting=false;
                                             mainLoop(ifOptions, true, true, subEquation, nothing,conditionValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                             if(conditionValue.substr(subEquationLength+3).find("true")!=std::string::npos) conditionTrue=true;
@@ -840,7 +840,7 @@ int main(int, char**)
 
                                             size_t subEquationLength=subEquation.length();
                                             lessetB::Options jumpOptions=options;
-                                            jumpOptions.showFractions=false;
+                                            jumpOptions.prettyPrinting=false;
                                             mainLoop(jumpOptions, true, true, subEquation, nothing,jumpValue,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false); // Lines with # are comments
                                             if(jumpValue.substr(subEquationLength+3).find("true")!=std::string::npos) jumpDestination=1;
                                             else if(jumpValue.substr(subEquationLength+3).find("false")!=std::string::npos) jumpDestination=0;
@@ -904,7 +904,15 @@ int main(int, char**)
                             ImGui::SetNextItemWidth(100);
                             if(ImGui::InputText("Min", &sliderMin,ImGuiInputTextFlags_CharsScientific))
                             {
-                                lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                                lessetB::Options evalOptions{false,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             false,
+                                                             0,
+                                                             0,
+                                                             ""};
                                 std::string tmp=sliderMin;
                                 lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMin,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                                 
@@ -917,7 +925,15 @@ int main(int, char**)
                             ImGui::SetNextItemWidth(100);
                             if(ImGui::InputText("Max", &sliderMax))
                             {
-                                lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                                lessetB::Options evalOptions{false,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             false,
+                                                             0,
+                                                             0,
+                                                             ""};
                                 std::string tmp=sliderMax;
                                 lessetB::mainLoop(evalOptions,true,false,tmp,nothing,sliderMax,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                                 if(sliderMax!="" && 
@@ -935,7 +951,7 @@ int main(int, char**)
                     // Variables Menu
                     if (ImGui::BeginMenu("Variables"))
                     {
-                        if (ImGui::BeginMenu("Add or change"))
+                        if (ImGui::BeginMenu("Add or Change"))
                         {
                             ImGui::InputText("Name",&newIdentifierNameVariable);
                             ImGui::InputText("Value",&newIdentifierValueVariable);
@@ -976,7 +992,7 @@ int main(int, char**)
                     // Macros Menu
                     if (ImGui::BeginMenu("Macros"))
                     {
-                        if (ImGui::BeginMenu("Add or change"))
+                        if (ImGui::BeginMenu("Add or Change"))
                         {
                             ImGui::InputText("Name",&newIdentifierNameMacro);
                             ImGui::InputText("Value",&newIdentifierValueMacro);
@@ -1155,6 +1171,11 @@ int main(int, char**)
                             graphsEquations.clear();
                             graphsPoints.first.clear();
                             graphsPoints.second.clear();
+
+                            graphsEquations.shrink_to_fit();
+                            graphsPoints.first.shrink_to_fit();
+                            graphsPoints.second.shrink_to_fit();
+
                             lessetB::globals::points.first.clear();
                             lessetB::globals::points.second.clear();
                         }
@@ -1200,6 +1221,8 @@ int main(int, char**)
                             {
                                 graphsPoints.first.erase(graphsPoints.first.begin()+i);
                                 graphsPoints.second.erase(graphsPoints.second.begin()+i);
+                                graphsPoints.first.shrink_to_fit();
+                                graphsPoints.second.shrink_to_fit();
                                 recalculateGraphs=true;
                             }
                         }
@@ -1223,7 +1246,15 @@ int main(int, char**)
                         ImGui::SetNextItemWidth(375);
                         if(ImGui::InputText("Min", &xMin,ImGuiInputTextFlags_CharsScientific))
                         {
-                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            lessetB::Options evalOptions{false,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            false,
+                                                            0,
+                                                            0,
+                                                            ""};
                             std::string tmp=xMin;
                             lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xMin,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                         }
@@ -1241,7 +1272,15 @@ int main(int, char**)
                         ImGui::SetNextItemWidth(375);
                         if(ImGui::InputText("Max", &xMax,ImGuiInputTextFlags_CharsScientific))
                         {
-                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            lessetB::Options evalOptions{false,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            false,
+                                                            0,
+                                                            0,
+                                                            ""};
                             std::string tmp=xMax;
                             lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xMax,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                         }
@@ -1259,7 +1298,15 @@ int main(int, char**)
                         ImGui::SetNextItemWidth(375);
                         if(ImGui::InputText("Step", &xStep,ImGuiInputTextFlags_CharsScientific))
                         {
-                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            lessetB::Options evalOptions{false,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            false,
+                                                            0,
+                                                            0,
+                                                            ""};
                             std::string tmp=xStep;
                             lessetB::mainLoop(evalOptions,true,false,tmp,nothing,xStep,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                         }
@@ -1298,13 +1345,13 @@ int main(int, char**)
                         }
                         ImGui::SetItemTooltip("Changes how precisely graphs are calculated, how many points per graph.\nOverkill might be useful for detailed graphs.\nOnly use Too Low if you have many graphs, are creating insane functions or your computer sux.");
 
-                        if(ImGui::Checkbox("Connect discontinuities",&interpolateDiscontinuities))
+                        if(ImGui::Checkbox("Connect Discontinuities",&interpolateDiscontinuities))
                         {
                             recalculateGraphs=true;
                         }
                         ImGui::SetItemTooltip("This calculator is stupid and doesn't actually know where exactly a discontinuity in a function like 1/x is.\nThus, it tries to approximate it, but sometimes ends up creating visual artifacts in continuous functions like ∛x.");
                         ImGui::SameLine();
-                        ImGui::Checkbox("Mark points",&markSpecialPoints);
+                        ImGui::Checkbox("Mark Points",&markSpecialPoints);
                         ImGui::SetItemTooltip("Mark points where a function is zero, the point closest to the cursor, extremes.");
 
                         options.interpolateDiscontinuities=interpolateDiscontinuities;
@@ -1317,9 +1364,17 @@ int main(int, char**)
                          ImGui::SetNextItemWidth(248.f);
                         // ImGui::SliderFloat("Max error for ≈",&aroundTruthinessLeniencyFloat,0,1);
                         
-                        if(ImGui::InputText("Max error for ≈", &aroundTruthinessLeniency,ImGuiInputTextFlags_CharsScientific))
+                        if(ImGui::InputText("Max Error for ≈", &aroundTruthinessLeniency,ImGuiInputTextFlags_CharsScientific))
                         {
-                            lessetB::Options evalOptions{false,0,0,0,0,false,0,0,""};
+                            lessetB::Options evalOptions{false,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            false,
+                                                            0,
+                                                            0,
+                                                            ""};
                             std::string tmp=aroundTruthinessLeniency;
                             lessetB::mainLoop(evalOptions,true,false,tmp,nothing,aroundTruthinessLeniency,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                         }
@@ -1342,16 +1397,16 @@ int main(int, char**)
                         }
                         options.aroundTruthinessLeniency=aroundTruthinessLeniencyFloat;
                         
-                        ImGui::Checkbox("Pretty output",&showFractions);
-                        options.showFractions=showFractions;
+                        ImGui::Checkbox("Pretty Output",&showFractions);
+                        options.prettyPrinting=showFractions;
                         ImGui::SetItemTooltip("Show some results as fractions or constants instead of decimal numbers.");
                         ImGui::SameLine();
-                        ImGui::Checkbox("Prioritize implicit multiplication",&prioritizeImplicitMultiplication);
+                        ImGui::Checkbox("Prioritize Implicit Multiplication",&prioritizeImplicitMultiplication);
                         options.prioritizeImplicitMultiplication=prioritizeImplicitMultiplication;
                         ImGui::SetItemTooltip("Disambiguate something like 8÷2(2+2) as 8÷(2(2+2))=1 instead of (8÷2)(2+2)=16.");
 
                         ImGui::SetNextItemWidth(350);
-                        ImGui::DragInt("##", &lessetB::globals::decimalPrecision,0.2,1,MAXOUTPUTPRECISION,"Decimal places in output: %d",ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragInt("##", &lessetB::globals::decimalPrecision,0.2,1,MAXOUTPUTPRECISION,"Decimal Places in Output: %d",ImGuiSliderFlags_AlwaysClamp);
                         ImGui::SetItemTooltip("Changes amount of decimal places shown in output.");
 
                         ImGui::EndMenu();
@@ -1432,6 +1487,9 @@ int main(int, char**)
                             ImGui::SetNextItemWidth(98);
                             ImGui::DragFloat("##2", &gayModeSpeed,0.00003,-0.01,0.01,"Speed: %.4f",ImGuiSliderFlags_AlwaysClamp);
                         }
+                        else ImGui::SameLine();
+                        ImGui::Checkbox("Decimal Comma", &lessetB::globals::useDecimalComma);
+                        ImGui::SetItemTooltip("Use comma for decimal places and semicolon for function argument separation.");
 
                         ImGui::EndMenu();
                     }
@@ -1447,6 +1505,9 @@ int main(int, char**)
                         if(ImGui::Button("Clear"))
                         {
                             resultHistory="";
+                            lessetB::globals::tokenMemory.clear();
+                            lessetB::globals::ans.clear();
+                            options.ans="NAN";
                         }
                     }
                     else
@@ -1499,12 +1560,6 @@ int main(int, char**)
 
                         if(ImGui::MenuItem("mod")) equation.append("mod");
                         ImGui::SetItemTooltip("Modulus, division with remainder. (%%)\nFloors the result of the division. fmod truncates it, rmod rounds it.");
-
-                        // if(ImGui::MenuItem("fmod")) equation.append("fmod");
-                        // ImGui::SetItemTooltip("Also modulus, but like, different. Idk.\nThis one acts like the underlying function fmod(), %% is ...more mod than this.");
-
-                        // if(ImGui::MenuItem("rmod")) equation.append("rmod");
-                        // ImGui::SetItemTooltip("Like fmod, but rounds result of division instead of truncating. Idk.");
 
                         if(ImGui::MenuItem("nPk")) equation.append("nPk");
                         ImGui::SetItemTooltip("Permutation calculation.");
@@ -1970,10 +2025,26 @@ int main(int, char**)
                 resultPlusEquals = "  =  " + std::to_string(static_cast<int>(1.0/io.DeltaTime));
             }
 
+            else if(equation=="how to exit vim" || equation=="how do i exit vim")
+            {
+                resultPlusEquals = "  =  :q";
+            }
+
             else if(equation=="gayMode")
             {
                 resultPlusEquals = "  =  check style options";
                 showGayMode=true;
+            }
+
+            else if(equation.find("fishthumbs")!=std::string::npos)
+            {
+                resultPlusEquals = "  =  tacky could never";
+                showGayMode=true;
+            }
+
+            else if(equation=="nine plus ten")
+            {
+                resultPlusEquals = "  =  twenty one";
             }
 
             else if(equation=="enableDebug")
@@ -2000,7 +2071,7 @@ int main(int, char**)
                 result="";
                 if(equation!="")
                 {
-                    lessetB::mainLoop(options,true,false,nonEmptyEquation,resultHistory,result,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
+                    lessetB::mainLoop(options,false,false,nonEmptyEquation,resultHistory,result,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
                     options.ans=result;
                 }
             } 
@@ -2233,7 +2304,13 @@ int main(int, char**)
                             for(size_t j{}; j<graphsEquations.size(); j++)
                             {
                                 nonEmptyGraphEquation=graphsEquations.at(j);
-                                lessetB::Options graphOptions{true,limits.X.Min,limits.X.Max,abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,(aroundTruthinessLeniencyFloat),interpolateDiscontinuities,prioritizeImplicitMultiplication};
+                                lessetB::Options graphOptions{true,
+                                                              limits.X.Min,
+                                                              limits.X.Max,
+                                                              abs(limits.X.Max-limits.X.Min)/maxIndividualGraphPoints*minimumPrecision,
+                                                              (aroundTruthinessLeniencyFloat),
+                                                              interpolateDiscontinuities,
+                                                              prioritizeImplicitMultiplication};
                                 lessetB::mainLoop(graphOptions,true,false,nonEmptyGraphEquation,nothing,nothing,instances.at(selectedInstance).userVariables,instances.at(selectedInstance).userMacros,false);
 
                                 graphsPoints.first.emplace_back(lessetB::globals::points.first);
@@ -2416,8 +2493,10 @@ int main(int, char**)
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable && false)        {            ImGui::UpdatePlatformWindows();            ImGui::RenderPlatformWindowsDefault();        }
         // Present Main Platform Window
         if (!main_is_minimized) FramePresent(wd);
+        if(!main_is_minimized && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Q)) break;
     }
     // Cleanup
+    std::cout<<"\nQuitting...\n";
     err = vkDeviceWaitIdle(g_Device);    check_vk_result(err);    ImGui_ImplVulkan_Shutdown();    ImGui_ImplGlfw_Shutdown();    ImPlot::DestroyContext();    ImGui::DestroyContext();CleanupVulkanWindow(&g_MainWindowData);CleanupVulkan();glfwDestroyWindow(window);glfwTerminate();
 
     return 0;

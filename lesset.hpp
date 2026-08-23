@@ -134,7 +134,7 @@ struct Options
     cpp_dec_float_100 aroundTruthinessLeniency{0.01};
     bool interpolateDiscontinuities{};
     bool prioritizeImplicitMultiplication{true};
-    bool showFractions{true};
+    bool prettyPrinting{true};
     std::string ans;
 };
 
@@ -178,12 +178,14 @@ namespace globals
 
     inline std::pair<std::vector<double>,std::vector<double>> points; 
 
-    inline std::string previousResult;
+    inline std::string ans;
     inline std::string errorMessage;
     inline bool error{};
 
     inline bool passedCalculationsFile{};
     inline bool passedInAsArg{};
+
+    inline bool useDecimalComma{};
 
     inline int decimalPrecision{MAXOUTPUTPRECISION};
 
@@ -834,481 +836,116 @@ bool replaceMacros(std::string &equation);
 
 inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculationsFile, std::string &equation, std::string &resultHistory, std::string &result, std::vector<Variable> &userVariables, std::vector<Macro> &userMacros, bool canDeclareIdentifiers=false)
 {
+    std::string initialEquation=equation;
     globals::error=false;
     globals::userVariables=userVariables;
     globals::userMacros=userMacros;
     globals::passedInAsArg=passedInAsArg;
     globals::passedCalculationsFile=passedCalculationsFile;
-
     globals::options=options;
-    std::cout.precision(MAXOUTPUTPRECISION);
     bool firstPass{true};
     std::ostringstream resultAsOSStream;
     resultAsOSStream.precision(MAXOUTPUTPRECISION);
-    globals::previousResult="nan";
-    if(options.ans!="") globals::previousResult=options.ans;
-    std::cout.precision(MAXOUTPUTPRECISION);
-    resultAsOSStream.precision(MAXOUTPUTPRECISION); 
+    globals::ans="nan";
+    if(options.ans!="") globals::ans=options.ans; 
+    getTokens("",true);
 
-        passedInFile:
-        if(equation.find('#') != std::string::npos) equation.erase(equation.find('#'));
-        if(equation.find("how do i exit vim")!=std::string::npos||equation.find("how to exit vim")!=std::string::npos)
+    if(equation.find('#') != std::string::npos && passedCalculationsFile) equation.erase(equation.find('#'));
+
+    if(equation.length()==0) return true;
+                   
+
+    for(size_t i{}; i<equation.length(); i++) // Replace some unicode
+    {
+        if(equation.find("≤",i)==i) equation.replace(i,sizeof("≤")-1,"<=");
+        else if(equation.find("ᵉ",i)==i) equation.replace(i,sizeof("ᵉ")-1,"ec");
+        else if(equation.find("α",i)==i) equation.replace(i,sizeof("α")-1,"a");
+        else if(equation.find("τ",i)==i) equation.replace(i,sizeof("τ")-1,"tau");
+        else if(equation.find("ξ",i)==i) equation.replace(i,sizeof("ξ")-1,"rnd");
+        else if(equation.find("∞",i)==i) equation.replace(i,sizeof("∞")-1,"inf");
+        else if(equation.find("φ",i)==i) equation.replace(i,sizeof("φ")-1,"phi");
+        else if(equation.find("√",i)==i) equation.replace(i,sizeof("√")-1,"sqrt");
+        else if(equation.find("∛",i)==i) equation.replace(i,sizeof("∛")-1,"cbrt");
+        else if(equation.find("∜",i)==i) equation.replace(i,sizeof("∜")-1,"qtrt");
+        else if(equation.find("⊕",i)==i) equation.replace(i,sizeof("⊕")-1,"XOR");
+        else if(equation.find("∨",i)==i) equation.replace(i,sizeof("∨")-1,"OR");
+        else if(equation.find("∧",i)==i) equation.replace(i,sizeof("∧")-1,"AND");
+        else if(equation.find("≥",i)==i) equation.replace(i,sizeof("≥")-1,">=");
+        else if(equation.find("−",i)==i) equation.replace(i,sizeof("−")-1,"-");    
+        else if(equation.find("≠",i)==i) equation.replace(i,sizeof("≠")-1,"=!"); 
+        else if(equation.find("÷",i)==i) equation.replace(i,sizeof("÷")-1,"/"); 
+        else if(equation.find("×",i)==i) equation.replace(i,sizeof("×")-1,"*"); 
+        else if(equation.find("π",i)==i) equation.replace(i,sizeof("π")-1,"pi");
+        else if(equation.find("γ",i)==i) equation.replace(i,sizeof("γ")-1,"eul"); 
+        else if(equation.find("ℯ",i)==i) equation.replace(i,sizeof("ℯ")-1,"e");
+        else if(equation.find("ᵉ",i)==i) equation.replace(i,sizeof("ᵉ")-1,"ec");
+        else if(equation.find("≈",i)==i) equation.replace(i,sizeof("≈")-1,"AROUND");
+        else if(equation.find("H₀",i)==i) equation.replace(i,sizeof("H₀")-1,"H0");
+        else if(equation.find("Z₀",i)==i) equation.replace(i,sizeof("Z₀")-1,"Z0");
+        else if(equation.find("U₀",i)==i) equation.replace(i,sizeof("U₀")-1,"U0");
+        else if(equation.find("mₐ",i)==i) equation.replace(i,sizeof("mₐ")-1,"ma");
+    }
+    for(size_t i{}; i<equation.length(); i++) if(equation.at(i)<32) equation.erase(i--,1); // Delete unprintable characters
+    
+
+
+    if(equation.find("fish")!=std::string::npos) // Fish.
+    {                                   
+        result+="fish.";         
+        return 0;                       
+    } 
+
+    for(int i{}; i<equation.length(); i++)
+    {
+        if(!(isValidInput(equation.at(i)))) equation.erase(equation.begin()+i--); // Basic garbage removal
+        if(i>=0)
         {
-            result+=":q\n\n";
-            return 1;
-        }
-
-        if(equation.length()==0) return true;
-                              
-        passedInAsArg:
-
-        for(size_t i{}; i<equation.length(); i++) // Replace some unicode
-        {
-            if(equation.find("≤",i)==i) equation.replace(i,sizeof("≤")-1,"<=");
-            else if(equation.find("ᵉ",i)==i) equation.replace(i,sizeof("ᵉ")-1,"ec");
-            else if(equation.find("α",i)==i) equation.replace(i,sizeof("α")-1,"a");
-            else if(equation.find("τ",i)==i) equation.replace(i,sizeof("τ")-1,"tau");
-            else if(equation.find("ξ",i)==i) equation.replace(i,sizeof("ξ")-1,"rnd");
-            else if(equation.find("∞",i)==i) equation.replace(i,sizeof("∞")-1,"inf");
-            else if(equation.find("φ",i)==i) equation.replace(i,sizeof("φ")-1,"phi");
-            else if(equation.find("√",i)==i) equation.replace(i,sizeof("√")-1,"sqrt");
-            else if(equation.find("∛",i)==i) equation.replace(i,sizeof("∛")-1,"cbrt");
-            else if(equation.find("∜",i)==i) equation.replace(i,sizeof("∜")-1,"qtrt");
-            else if(equation.find("⊕",i)==i) equation.replace(i,sizeof("⊕")-1,"XOR");
-            else if(equation.find("∨",i)==i) equation.replace(i,sizeof("∨")-1,"OR");
-            else if(equation.find("∧",i)==i) equation.replace(i,sizeof("∧")-1,"AND");
-            else if(equation.find("≥",i)==i) equation.replace(i,sizeof("≥")-1,">=");
-            else if(equation.find("−",i)==i) equation.replace(i,sizeof("−")-1,"-");    
-            else if(equation.find("≠",i)==i) equation.replace(i,sizeof("≠")-1,"=!"); 
-            else if(equation.find("÷",i)==i) equation.replace(i,sizeof("÷")-1,"/"); 
-            else if(equation.find("×",i)==i) equation.replace(i,sizeof("×")-1,"*"); 
-            else if(equation.find("π",i)==i) equation.replace(i,sizeof("π")-1,"pi");
-            else if(equation.find("γ",i)==i) equation.replace(i,sizeof("γ")-1,"eul"); 
-            else if(equation.find("ℯ",i)==i) equation.replace(i,sizeof("ℯ")-1,"e");
-            else if(equation.find("ᵉ",i)==i) equation.replace(i,sizeof("ᵉ")-1,"ec");
-            else if(equation.find("≈",i)==i) equation.replace(i,sizeof("≈")-1,"AROUND");
-            else if(equation.find("H₀",i)==i) equation.replace(i,sizeof("H₀")-1,"H0");
-            else if(equation.find("Z₀",i)==i) equation.replace(i,sizeof("Z₀")-1,"Z0");
-            else if(equation.find("U₀",i)==i) equation.replace(i,sizeof("U₀")-1,"U0");
-            else if(equation.find("mₐ",i)==i) equation.replace(i,sizeof("mₐ")-1,"ma");
-        }
-        for(size_t i{}; i<equation.length(); i++) if(equation.at(i)<32) equation.erase(i--,1); // Delete unprintable characters
-        
-        if(equation.find("fishthumbs")!=std::string::npos) // Fish.
-        {                                   
-            result+="tacky could never";         
-            return 0;                       
-        }  
-
-        if(equation.find("fish")!=std::string::npos) // Fish.
-        {                                   
-            result+="fish.";         
-            return 0;                       
-        }  
-        
-        if(equation.find("nine plus ten")!=std::string::npos)
-        {                                   
-            result+="twenty one.";         
-            return 0;                       
-        }  
-
-        for(int i{}; i<equation.length(); i++)
-        {
-            if(!(isValidInput(equation.at(i)))) equation.erase(equation.begin()+i--); // Basic garbage removal
-            if(i>=0)
-            {
-                if(equation.at(i)=='[') equation.at(i)='('; // Cheating
-                else if(equation.at(i)==']') equation.at(i)=')';
-                else if(equation.at(i)==';') equation.at(i)=',';
-            }
-        }
-
-        if(!canDeclareIdentifiers)
-            if(replaceMacros(equation))
-            {
-                equation.clear();
-                if(passedCalculationsFile) return false;
-                return false;
-            }
-
-        int parenthesesImbalance{};
-        uint absValueLineCount{};
-        for(size_t i{}; i<equation.length(); i++)
-        {
-            if(equation.at(i)=='|') absValueLineCount++;
-            // if(equation.at(i)=='(') parenthesesImbalance++;
-            // else if(equation.at(i)==')') parenthesesImbalance--;
-            if(parenthesesImbalance<0 || (equation.length()==i+1 && absValueLineCount%2!=0))
-            {
-                globals::error=true;
-                result+="Absolute value parentheses not balanced\n";
-                equation.clear();
-            }
-        }
-
-        if(absValueLineCount%2!=0||parenthesesImbalance<0) return false;
-        
-        if(equation.length()==0)
-        {
-            globals::error=true;
-            result+="No valid input\n";
-            equation.clear();
-            return false;
-        }
-        std::vector<Token> tokens = getTokens(equation);
-        if(globals::errorMessage!="" && !passedCalculationsFile)
-        {
-            globals::error=true;
-            result=globals::errorMessage;
-            globals::errorMessage.clear();
-            resultAsOSStream.str("");
-            resultAsOSStream.clear();
-            equation.clear();
-            tokens.clear();
-            options.graph=false;
-            firstPass=false;
-            // globals::tokenMemory.clear();
-            getTokens("",true);
-
-            userMacros=globals::userMacros;
-            userVariables=globals::userVariables;    
-            return false;        
-        }
-        // Add identifiers
-        for(size_t i{}; i<tokens.size() && canDeclareIdentifiers; i++)
-        {
-            if(tokens.at(i).category()==tokenCategory_t::ASSIGNMENT)
-            {
-                size_t j{};
-                std::vector<Token> assignmentTokens;
-                bool invalidName{};
-                std::string identifierName{tokens.at(i).value().substr(3,tokens.at(i).value().length()-4)};
-                if(globals::symbols.find(identifierName)!=globals::symbols.end() || identifierName=="h*") invalidName=true;
-                
-                if(invalidName)
-                {
-                    result+="Forbidden name\n";
-                    tokens.clear();
-                    invalidName=true;
-                    break;
-                }
-
-                std::vector<Token> nameCheckTokens{getTokens(tokens.at(i).value().substr(3,tokens.at(i).value().length()-4),false,true)};
-                for(size_t h{}; h<nameCheckTokens.size(); h++)
-                {
-                    if(nameCheckTokens.at(h).type()==token_t::FUNCTION || (nameCheckTokens.at(h).category()==tokenCategory_t::OPERATOR && nameCheckTokens.at(h).value()!="h*") || nameCheckTokens.at(h).type()==token_t::NUMBER || nameCheckTokens.at(h).type()==token_t::VARIABLE)
-                    {
-                        result+="Forbidden name\n";
-                        tokens.clear();
-                        invalidName=true;
-                        break;
-                    }
-                }
-                if(invalidName) break;
-
-                if(identifierName.length()<3 && tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
-                {
-                    result+="Note: short macro names can cause some functions to be inaccessible. ";
-                }
-
-                for(j=i+1; j<tokens.size() && tokens.at(j).type()!=token_t::ASSIGNMENTMACRO && tokens.at(j).type()!=token_t::VARIABLE; j++)
-                {
-                    if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE && tokens.at(j).type()==token_t::ASSIGNMENTVARIABLE) break;
-                    assignmentTokens.emplace_back(tokens.at(j));
-                }
-                if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE) resultAsOSStream<<calculation<cpp_dec_float_100>(assignmentTokens, NAN);
-                else if(tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
-                {
-                    resultAsOSStream<<equation.substr(equation.find(tokens.at(i).value())+tokens.at(i).value().length());
-                }
-                bool failed{};
-                
-                if(resultAsOSStream.str().find("nan")==std::string::npos && 
-                   tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE &&
-                   identifierName!=resultAsOSStream.str()) failed=addIdentifier(Variable(std::string(identifierName),resultAsOSStream.str()));
-                
-                else if(resultAsOSStream.str().find("nan")==std::string::npos &&
-                        tokens.at(i).type()==token_t::ASSIGNMENTMACRO &&
-                        identifierName!=resultAsOSStream.str()) failed=addIdentifier(Macro(std::string(identifierName),resultAsOSStream.str()));
-        
-                if(!failed &&
-                resultAsOSStream.str().find("nan")==std::string::npos &&
-                identifierName!=resultAsOSStream.str()) result+="Assigned \"" + identifierName + "\" value " + resultAsOSStream.str()+'\n';
-                else result+="Forbidden name or NAN\n";
-
-                tokens.erase(tokens.begin()+i,tokens.begin()+j-i);
-                // globals::previousResult=resultAsOSStream.str();
-                resultAsOSStream.str("");
-                resultAsOSStream.clear();
-                i--;
-            }
-        }
-
-        bool hasX{};
-        
-        if(tokens.size()==0 && !options.graph) 
-        {
-            resultAsOSStream.str("");
-            resultAsOSStream.clear();
-            equation.clear();
-            tokens.clear();
-            options.graph=false;
-            firstPass=false;
-            globals::tokenMemory.clear();
-            getTokens("",true);
-
-            userMacros=globals::userMacros;
-            userVariables=globals::userVariables;
-            return false;
-        }
-        // if(canDeclareIdentifiers) return false;
-
-        for(int i{}; i<equation.length(); i++)
-        {
-            if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) hasX=true;
-            if(i>1&&equation.at(i)=='x' && equation.find("max",i-2)!=i-2 && equation.find("mix",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) hasX=true;
-        }
-        if(equation.at(0)=='x') hasX=true;
-
-        if(!hasX && !options.graph && !(canDeclareIdentifiers && !passedCalculationsFile)) // No x found
-        {
-            resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, NAN);
-
-            if(resultAsOSStream.str().find("nan")!=std::string::npos)
-            {
-                globals::previousResult="nan";
-                resultAsOSStream.str("");
-                resultAsOSStream.clear();
-                resultAsOSStream<<"Not a Number";
-            }
-            else if(resultAsOSStream.str()=="-0")
-            {
-                globals::previousResult='0';
-                resultAsOSStream.str("");
-                resultAsOSStream.clear();
-                resultAsOSStream<<"0";               
-            }
-            else globals::previousResult=resultAsOSStream.str();
-
-            for(size_t i{}; i<tokens.size(); i++)
-            {
-                if ((tokens.at(i).value()=="<" || 
-                        tokens.at(i).value()==">" ||
-                        tokens.at(i).value()=="=" || 
-                        tokens.at(i).value()=="=!" ||
-                        tokens.at(i).value()=="<=" || 
-                        tokens.at(i).value()=="OR" ||
-                        tokens.at(i).value()=="AND" ||
-                        tokens.at(i).value()=="AROUND" ||
-                        tokens.at(i).value()=="XOR" ||
-                        tokens.at(i).value()=="NOR" ||    
-                        tokens.at(i).value()==">="))
-                {
-                    if(resultAsOSStream.str()=="1") resultAsOSStream.str("true");
-                    else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
-                }
-            }
-
-            if(!passedCalculationsFile) result=resultAsOSStream.str();
-            else
-            {
-                result+=equation+" = "+resultAsOSStream.str()+'\n';
-            }
-        }
-        else if(!options.graph && !(canDeclareIdentifiers && !passedCalculationsFile))
-        {
-            // result="";
-            std::cout.precision(MAXOUTPUTPRECISION);
-            resultAsOSStream.precision(MAXOUTPUTPRECISION);
-            if(options.xStep==0)options.xStep=INFINITY;
-            size_t i{};
-            size_t totalCalculations = static_cast<size_t>(abs(options.xMax-options.xMin)/abs(options.xStep))+1;
-            if(totalCalculations>100000)
-            {
-                options.xMax=options.xMin+options.xStep*100000;
-                totalCalculations=100000;
-            }
-
-            for(cpp_dec_float_100 xValue=options.xMin; xValue<=options.xMax+0.000000001; xValue+=options.xStep)
-            {
-                i++;
-                std::ostringstream xValueAsOSStream;
-                if(xValue>(-0.00002) && xValue<0.00002 && options.xStep>0.00002) xValue=0;
-                xValueAsOSStream<<xValue;
-                xValue=static_cast<cpp_dec_float_100>(xValueAsOSStream.str());
-
-                // if(abs(xValue)-abs(round(xValue))<0.00001) xValue=round(xValue);
-
-                resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, xValue);
-                if(resultAsOSStream.str().find("nan")!=std::string::npos)
-                {
-                    resultAsOSStream.str("Not a Number");
-                }
-                if(resultAsOSStream.str()=="-0")
-                {
-                    resultAsOSStream.str("");
-                    resultAsOSStream.clear();       
-                    resultAsOSStream<<"0";      
-                }
-                for(size_t i{}; i<tokens.size(); i++)
-                {
-                    if ((tokens.at(i).value()=="<" || 
-                         tokens.at(i).value()==">" ||
-                         tokens.at(i).value()=="=" || 
-                         tokens.at(i).value()=="=!" ||
-                         tokens.at(i).value()=="<=" ||
-                         tokens.at(i).value()=="OR" || 
-                         tokens.at(i).value()=="AND" || 
-                         tokens.at(i).value()=="XOR" || 
-                         tokens.at(i).value()=="AROUND" ||
-                         tokens.at(i).value()=="NOR" || 
-                         tokens.at(i).value()==">="))
-                    {
-                        if(resultAsOSStream.str()=="1") resultAsOSStream.str("true");
-                        else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
-                    }
-                }
-                if(globals::decimalPrecision!=500 && isNumber(resultAsOSStream.str()))
-                {
-                    // x-remainder(x,1/pow(10,decimalplaces))
-                    std::ostringstream oss;
-                    oss.precision(MAXOUTPUTPRECISION);
-                    oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+resultAsOSStream.str()+','+std::to_string(globals::decimalPrecision))), NAN);
-                    resultAsOSStream.str("");
-                    resultAsOSStream<<oss.str();
-                }
-                result+=std::to_string(i);
-                for(size_t spaces{}; spaces<std::to_string(totalCalculations).length()-std::to_string(i).length(); spaces++) result+="  ";
-                result+=": (" + xValueAsOSStream.str() + " ; " + resultAsOSStream.str()+")\n";
-                resultAsOSStream.str("");
-                resultAsOSStream.clear();
-            }
-        }
-        else if(!(canDeclareIdentifiers && !passedCalculationsFile) && options.graph)
-        {
-            globals::points.first.clear();
-            globals::points.second.clear();
-
-            if(hasX)
-            {    
-                uint threadCount{std::thread::hardware_concurrency()};
-                std::vector<std::future<std::vector<Point>>> results;
-                // if(globals::options.xStep==0) globals::options.xStep=DBL_EPSILON;
-
-                for(size_t i{}; i<threadCount; i++)
-                {
-                    double perThreadRange{abs(options.xMax-options.xMin)/threadCount};
-                    double thisThreadOffset{perThreadRange*i};
-                    double thisThreadXValue{static_cast<double>(options.xMin+thisThreadOffset)};
-                    results.push_back(std::async(calculationCallerGraphing,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
-                }
-
-                for(size_t i{}; i<threadCount; i++)
-                {
-                    std::vector<Point> thisThreadPoints=results.at(i).get();
-                    for(size_t j{}; j<thisThreadPoints.size(); j++)
-                    {
-                        globals::points.first.emplace_back(thisThreadPoints.at(j).x);
-                        globals::points.second.emplace_back(thisThreadPoints.at(j).y);
-                    }
-                }    
-            }
-            else // Graphs without x are constant and thus only need to be calculated once.
-            {
-                double value = calculation<double>(tokens,NAN,NAN);
-                globals::options.xStep*=6; // Less points
-                size_t amount = static_cast<size_t>((globals::options.xMax-globals::options.xMin)/globals::options.xStep);
-                double xValue = static_cast<double>(globals::options.xMin);
-                
-
-                for(size_t i{}; i<amount+3; i++) // A few extra points.
-                {
-                    globals::points.first.emplace_back(xValue);
-                    xValue+=static_cast<double>(globals::options.xStep);
-                    globals::points.second.emplace_back(value);
-                }
-            }
-            if(globals::debugCout)
-            {
-                std::cout<<"Points calculated for graph "<<equation<<" : ("<<globals::points.first.size()<<" ; "<<globals::points.second.size()<<")\n";
-                globals::debugCoutUsed=true;
-            }
-        }
-
-        bool isKnownConstant{};
-        if(globals::errorMessage!="" && !passedCalculationsFile)
-        {
-            globals::error=true;
-            result=globals::errorMessage;
-            globals::errorMessage.clear();
-            goto cleanup;
-        }
-
-        // Show results equal to a constant as that constant
-        if(!hasX && options.showFractions && globals::valueToConstant.find(resultAsOSStream.str())!=globals::valueToConstant.end())
-        {
-            if(equation!=globals::valueToConstant.find(resultAsOSStream.str())->second)
-            {
-                if(!passedCalculationsFile) result=globals::valueToConstant.find(resultAsOSStream.str())->second;
-                else
-                {
-                    result+=equation+" = "+globals::valueToConstant.find(resultAsOSStream.str())->second+'\n';
-                }
-                isKnownConstant=true;
-            }
-        }
-
-        // Check for fractions
-        if(!hasX && 
-           options.showFractions && 
-           isNumber(resultAsOSStream.str()) && 
-           !isKnownConstant && 
-           resultAsOSStream.str().find('e')==std::string::npos)
-        {
-            Frac frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
+            // if(equation.at(i)=='[') equation.at(i)='('; // Cheating
+            // else if(equation.at(i)==']') equation.at(i)=')';
             
-            std::string currentResult=resultAsOSStream.str();
-            resultAsOSStream.str("");
-            resultAsOSStream<<frac.numer<<'/'<<frac.denom;
-
-            // Just try a couple times with more and more decimal places and see if the funny spits out a reasonable fraction lmao
-            for(size_t i{10}; 
-                (abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) >= cpp_dec_float_100(0.000000000000000000000000000000001) || frac.numer==INFINITY) && 
-                i<=20; i++)
-            {
-                frac = decimalToFraction(static_cast<cpp_dec_float_100>(currentResult),i);
-                resultAsOSStream.str("");
-                resultAsOSStream<<frac.numer<<'/'<<frac.denom;
-            }
-
-            if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
-               // resultAsOSStream.str().length()<12 &&  // Lowk a bandaid to prevent it saying something stupid.
-               equation!=resultAsOSStream.str() && 
-               // std::fmod(frac.y,10)!=0 && // Stops something like 3.307 -> 3307/1000
-               frac.denom!=1) 
-            {
-                if(!passedCalculationsFile) result=resultAsOSStream.str();
-                else result+=equation+" = "+resultAsOSStream.str()+'\n';
-            }
+            if(globals::useDecimalComma && equation.at(i)==',') equation.at(i)='.';
+            if(globals::useDecimalComma && equation.at(i)==';') equation.at(i)=',';
         }
+    }
 
-        if(globals::decimalPrecision!=MAXOUTPUTPRECISION && isNumber(result))
+    if(!canDeclareIdentifiers)
+        if(replaceMacros(equation))
         {
-            // Total hack. I don't care though.
-            std::ostringstream oss;
-            oss.precision(MAXOUTPUTPRECISION);
-            oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+result+','+std::to_string(globals::decimalPrecision))), NAN);
-            result=oss.str();
+            equation.clear();
+            if(passedCalculationsFile) return false;
+            return false;
         }
 
-
-        if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile) && !options.graph)
+    int parenthesesImbalance{};
+    uint absValueLineCount{};
+    for(size_t i{}; i<equation.length(); i++)
+    {
+        if(equation.at(i)=='|') absValueLineCount++;
+        // if(equation.at(i)=='(') parenthesesImbalance++;
+        // else if(equation.at(i)==')') parenthesesImbalance--;
+        if(parenthesesImbalance<0 || (equation.length()==i+1 && absValueLineCount%2!=0))
         {
-            // This caused me immense pain
-            std::string addToHistory = '\n'+equation+" = "+result;
-            if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
+            globals::error=true;
+            result+="Absolute value parentheses not balanced\n";
+            equation.clear();
         }
-        cleanup:
+    }
+
+    if(absValueLineCount%2!=0||parenthesesImbalance<0) return false;
+    
+    if(equation.length()==0)
+    {
+        globals::error=true;
+        result+="No valid input\n";
+        equation.clear();
+        return false;
+    }
+    std::vector<Token> tokens = getTokens(equation);
+    if(globals::errorMessage!="" && !passedCalculationsFile)
+    {
+        globals::error=true;
+        result=globals::errorMessage;
+        globals::errorMessage.clear();
         resultAsOSStream.str("");
         resultAsOSStream.clear();
         equation.clear();
@@ -1316,11 +953,382 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         options.graph=false;
         firstPass=false;
         // globals::tokenMemory.clear();
-        getTokens("",true);
+
+        userMacros=globals::userMacros;
+        userVariables=globals::userVariables;    
+        return false;        
+    }
+    // Add identifiers
+    for(size_t i{}; i<tokens.size() && canDeclareIdentifiers; i++)
+    {
+        if(tokens.at(i).category()==tokenCategory_t::ASSIGNMENT)
+        {
+            size_t j{};
+            std::vector<Token> assignmentTokens;
+            bool invalidName{};
+            std::string identifierName{tokens.at(i).value().substr(3,tokens.at(i).value().length()-4)};
+            if(globals::symbols.find(identifierName)!=globals::symbols.end() || identifierName=="h*") invalidName=true;
+            
+            if(invalidName)
+            {
+                result+="Forbidden name\n";
+                tokens.clear();
+                invalidName=true;
+                break;
+            }
+
+            std::vector<Token> nameCheckTokens{getTokens(tokens.at(i).value().substr(3,tokens.at(i).value().length()-4),false,true)};
+            for(size_t h{}; h<nameCheckTokens.size(); h++)
+            {
+                if(nameCheckTokens.at(h).type()==token_t::FUNCTION || 
+                       (nameCheckTokens.at(h).category()==tokenCategory_t::OPERATOR && nameCheckTokens.at(h).value()!="h*") || // Allow implicit multiplication operator lmao
+                   nameCheckTokens.at(h).type()==token_t::NUMBER || 
+                   nameCheckTokens.at(h).type()==token_t::VARIABLE)
+                {
+                    result+="Forbidden name\n";
+                    tokens.clear();
+                    invalidName=true;
+                    break;
+                }
+            }
+            if(invalidName) break;
+
+            if(identifierName.length()<3 && tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
+            {
+                result+="Note: short macro names can cause some functions to be inaccessible. ";
+            }
+
+            for(j=i+1; j<tokens.size() && tokens.at(j).type()!=token_t::ASSIGNMENTMACRO && tokens.at(j).type()!=token_t::VARIABLE; j++)
+            {
+                if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE && tokens.at(j).type()==token_t::ASSIGNMENTVARIABLE) break;
+                assignmentTokens.emplace_back(tokens.at(j));
+            }
+            if(tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE) resultAsOSStream<<calculation<cpp_dec_float_100>(assignmentTokens, NAN);
+            else if(tokens.at(i).type()==token_t::ASSIGNMENTMACRO)
+            {
+                resultAsOSStream<<equation.substr(equation.find(tokens.at(i).value())+tokens.at(i).value().length());
+            }
+            bool failed{};
+            
+            if(resultAsOSStream.str().find("nan")==std::string::npos && 
+                tokens.at(i).type()==token_t::ASSIGNMENTVARIABLE &&
+                identifierName!=resultAsOSStream.str()) failed=addIdentifier(Variable(std::string(identifierName),resultAsOSStream.str()));
+            
+            else if(resultAsOSStream.str().find("nan")==std::string::npos &&
+                    tokens.at(i).type()==token_t::ASSIGNMENTMACRO &&
+                    identifierName!=resultAsOSStream.str()) failed=addIdentifier(Macro(std::string(identifierName),resultAsOSStream.str()));
+    
+            if(!failed &&
+            resultAsOSStream.str().find("nan")==std::string::npos &&
+            identifierName!=resultAsOSStream.str()) result+="Assigned \"" + identifierName + "\" value " + resultAsOSStream.str()+'\n';
+            else result+="Forbidden name or NAN\n";
+
+            tokens.erase(tokens.begin()+i,tokens.begin()+j-i);
+            // globals::previousResult=resultAsOSStream.str();
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+            i--;
+        }
+    }
+
+    bool hasX{};
+    
+    if(tokens.size()==0 && !options.graph) 
+    {
+        resultAsOSStream.str("");
+        resultAsOSStream.clear();
+        equation.clear();
+        tokens.clear();
+        options.graph=false;
+        firstPass=false;
+        globals::tokenMemory.clear();
 
         userMacros=globals::userMacros;
         userVariables=globals::userVariables;
         return false;
+    }
+
+    for(int i{}; i<equation.length(); i++)
+    {
+        if(i==1 && equation.at(1)=='x' && equation.find("exp",0)!=0) hasX=true;
+        if(i>1&&equation.at(i)=='x' && equation.find("max",i-2)!=i-2 && equation.find("mix",i-2)!=i-2 && equation.find("exp",i-1)!=i-1) hasX=true;
+    }
+    if(equation.at(0)=='x') hasX=true;
+
+    if(!hasX && !options.graph && !(canDeclareIdentifiers && !passedCalculationsFile)) // No x found
+    {
+        resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, NAN);
+
+        if(resultAsOSStream.str().find("nan")!=std::string::npos)
+        {
+            globals::ans="nan";
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+            resultAsOSStream<<"Not a Number";
+        }
+        else if(resultAsOSStream.str()=="-0")
+        {
+            globals::ans='0';
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+            resultAsOSStream<<"0";               
+        }
+        else globals::ans=resultAsOSStream.str();
+
+        for(size_t i{}; i<tokens.size(); i++)
+        {
+            if (globals::options.prettyPrinting &&
+                (tokens.at(i).value()=="<" || 
+                    tokens.at(i).value()==">" ||
+                    tokens.at(i).value()=="=" || 
+                    tokens.at(i).value()=="=!" ||
+                    tokens.at(i).value()=="<=" || 
+                    tokens.at(i).value()=="OR" ||
+                    tokens.at(i).value()=="AND" ||
+                    tokens.at(i).value()=="AROUND" ||
+                    tokens.at(i).value()=="XOR" ||
+                    tokens.at(i).value()=="NOR" ||    
+                    tokens.at(i).value()==">="))
+            {
+                if(resultAsOSStream.str()=="1") resultAsOSStream.str("true");
+                else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
+            }
+        }
+
+        if(!passedCalculationsFile) result=resultAsOSStream.str();
+        else
+        {
+            result+=equation+" = "+resultAsOSStream.str()+'\n';
+        }
+    }
+    else if(!options.graph && !(canDeclareIdentifiers && !passedCalculationsFile))
+    {
+        // result="";
+        std::cout.precision(MAXOUTPUTPRECISION);
+        resultAsOSStream.precision(MAXOUTPUTPRECISION);
+        if(options.xStep==0)options.xStep=INFINITY;
+        size_t i{};
+        size_t totalCalculations = static_cast<size_t>(abs(options.xMax-options.xMin)/abs(options.xStep))+1;
+        if(totalCalculations>100000)
+        {
+            options.xMax=options.xMin+options.xStep*100000;
+            totalCalculations=100000;
+        }
+
+        for(cpp_dec_float_100 xValue=options.xMin; xValue<=options.xMax+0.000000001; xValue+=options.xStep)
+        {
+            i++;
+            std::ostringstream xValueAsOSStream;
+            if(xValue>(-0.00002) && xValue<0.00002 && options.xStep>0.00002) xValue=0;
+            xValueAsOSStream<<xValue;
+            xValue=static_cast<cpp_dec_float_100>(xValueAsOSStream.str());
+
+            // if(abs(xValue)-abs(round(xValue))<0.00001) xValue=round(xValue);
+
+            resultAsOSStream<<calculation<cpp_dec_float_100>(tokens, xValue);
+            if(resultAsOSStream.str().find("nan")!=std::string::npos)
+            {
+                resultAsOSStream.str("Not a Number");
+            }
+            if(resultAsOSStream.str()=="-0")
+            {
+                resultAsOSStream.str("");
+                resultAsOSStream.clear();       
+                resultAsOSStream<<"0";      
+            }
+            for(size_t i{}; i<tokens.size(); i++)
+            {
+                if (globals::options.prettyPrinting &&
+                    (tokens.at(i).value()=="<" || 
+                        tokens.at(i).value()==">" ||
+                        tokens.at(i).value()=="=" || 
+                        tokens.at(i).value()=="=!" ||
+                        tokens.at(i).value()=="<=" ||
+                        tokens.at(i).value()=="OR" || 
+                        tokens.at(i).value()=="AND" || 
+                        tokens.at(i).value()=="XOR" || 
+                        tokens.at(i).value()=="AROUND" ||
+                        tokens.at(i).value()=="NOR" || 
+                        tokens.at(i).value()==">="))
+                {
+                    if(resultAsOSStream.str()=="1") resultAsOSStream.str("true");
+                    else if(resultAsOSStream.str()=="0") resultAsOSStream.str("false");
+                }
+            }
+            if(globals::decimalPrecision!=MAXOUTPUTPRECISION && isNumber(resultAsOSStream.str()))
+            {
+                // x-remainder(x,1/pow(10,decimalplaces))
+                std::ostringstream oss;
+                oss.precision(MAXOUTPUTPRECISION);
+                oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+resultAsOSStream.str()+','+std::to_string(globals::decimalPrecision))), NAN);
+                resultAsOSStream.str("");
+                resultAsOSStream<<oss.str();
+            }
+            
+            if(globals::useDecimalComma && xValueAsOSStream.str().find('.')!=std::string::npos && !globals::error)
+            {
+                std::string xValueStr=xValueAsOSStream.str();
+                for(size_t i{}; i<xValueStr.length(); i++) if(xValueStr.at(i)=='.') xValueStr.at(i)=',';
+                xValueAsOSStream.str("");
+                xValueAsOSStream<<xValueStr;
+            }
+
+            if(globals::useDecimalComma && resultAsOSStream.str().find('.')!=std::string::npos && !globals::error)
+            {
+                std::string resultStr=resultAsOSStream.str();
+                for(size_t i{}; i<resultStr.length(); i++) if(resultStr.at(i)=='.') resultStr.at(i)=',';
+                resultAsOSStream.str("");
+                resultAsOSStream<<resultStr;
+            }
+            
+            result+=std::to_string(i);
+            for(size_t spaces{}; spaces<std::to_string(totalCalculations).length()-std::to_string(i).length(); spaces++) result+="  ";
+            result+=": (" + xValueAsOSStream.str() + " ; " + resultAsOSStream.str()+")\n";
+            resultAsOSStream.str("");
+            resultAsOSStream.clear();
+        }
+    }
+    else if(!(canDeclareIdentifiers && !passedCalculationsFile) && options.graph)
+    {
+        globals::points.first.clear();
+        globals::points.second.clear();
+
+        if(hasX)
+        {    
+            uint threadCount{std::thread::hardware_concurrency()};
+            std::vector<std::future<std::vector<Point>>> results;
+            // if(globals::options.xStep==0) globals::options.xStep=DBL_EPSILON;
+
+            for(size_t i{}; i<threadCount; i++)
+            {
+                double perThreadRange{abs(options.xMax-options.xMin)/threadCount};
+                double thisThreadOffset{perThreadRange*i};
+                double thisThreadXValue{static_cast<double>(options.xMin+thisThreadOffset)};
+                results.push_back(std::async(calculationCallerGraphing,std::ref(tokens),thisThreadXValue,perThreadRange+thisThreadXValue, i));
+            }
+
+            for(size_t i{}; i<threadCount; i++)
+            {
+                std::vector<Point> thisThreadPoints=results.at(i).get();
+                for(size_t j{}; j<thisThreadPoints.size(); j++)
+                {
+                    globals::points.first.emplace_back(thisThreadPoints.at(j).x);
+                    globals::points.second.emplace_back(thisThreadPoints.at(j).y);
+                }
+            }    
+        }
+        else // Graphs without x are constant and thus only need to be calculated once.
+        {
+            double value = calculation<double>(tokens,NAN,NAN);
+            globals::options.xStep*=6; // Less points
+            size_t amount = static_cast<size_t>((globals::options.xMax-globals::options.xMin)/globals::options.xStep);
+            double xValue = static_cast<double>(globals::options.xMin);
+            
+
+            for(size_t i{}; i<amount+3; i++) // A few extra points.
+            {
+                globals::points.first.emplace_back(xValue);
+                xValue+=static_cast<double>(globals::options.xStep);
+                globals::points.second.emplace_back(value);
+            }
+        }
+        if(globals::debugCout)
+        {
+            std::cout<<"Points calculated for graph "<<equation<<" : ("<<globals::points.first.size()<<" ; "<<globals::points.second.size()<<")\n";
+            globals::debugCoutUsed=true;
+        }
+    }
+
+    bool isKnownConstant{};
+    if(globals::errorMessage!="" && !passedCalculationsFile)
+    {
+        globals::error=true;
+        result=globals::errorMessage;
+        globals::errorMessage.clear();
+        goto cleanup;
+    }
+
+    // Show results equal to a constant as that constant
+    if(!hasX && options.prettyPrinting && globals::valueToConstant.find(resultAsOSStream.str())!=globals::valueToConstant.end())
+    {
+        if(equation!=globals::valueToConstant.find(resultAsOSStream.str())->second)
+        {
+            if(!passedCalculationsFile) result=globals::valueToConstant.find(resultAsOSStream.str())->second;
+            else
+            {
+                result+=equation+" = "+globals::valueToConstant.find(resultAsOSStream.str())->second+'\n';
+            }
+            isKnownConstant=true;
+        }
+    }
+
+    // Check for fractions
+    if(!hasX && 
+        options.prettyPrinting && 
+        isNumber(resultAsOSStream.str()) && 
+        !isKnownConstant && 
+        resultAsOSStream.str().find('e')==std::string::npos)
+    {
+        Frac frac = decimalToFraction(static_cast<cpp_dec_float_100>(resultAsOSStream.str()));
+        
+        std::string currentResult=resultAsOSStream.str();
+        resultAsOSStream.str("");
+        resultAsOSStream<<frac.numer<<'/'<<frac.denom;
+
+        // Just try a couple times with more and more decimal places and see if the funny spits out a reasonable fraction lmao
+        for(size_t i{10}; 
+            (abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) >= cpp_dec_float_100(0.000000000000000000000000000000001) || frac.numer==INFINITY) && 
+            i<=20; i++)
+        {
+            frac = decimalToFraction(static_cast<cpp_dec_float_100>(currentResult),i);
+            resultAsOSStream.str("");
+            resultAsOSStream<<frac.numer<<'/'<<frac.denom;
+        }
+
+        if(abs(calculation<cpp_dec_float_100>(getTokens(resultAsOSStream.str(),false,true), NAN) - static_cast<cpp_dec_float_100>(currentResult)) < cpp_dec_float_100(0.000000000000000000000000000000001) && 
+            // resultAsOSStream.str().length()<12 &&  // Lowk a bandaid to prevent it saying something stupid.
+            equation!=resultAsOSStream.str() && 
+            // std::fmod(frac.y,10)!=0 && // Stops something like 3.307 -> 3307/1000
+            frac.denom!=1) 
+        {
+            if(!passedCalculationsFile) result=resultAsOSStream.str();
+            else result+=equation+" = "+resultAsOSStream.str()+'\n';
+        }
+    }
+
+    if(globals::decimalPrecision!=MAXOUTPUTPRECISION && isNumber(result))
+    {
+        // Total hack. I don't care though.
+        std::ostringstream oss;
+        oss.precision(MAXOUTPUTPRECISION);
+        oss<<evaluateRound<cpp_dec_float_100>(Token(std::string("round("+result+','+std::to_string(globals::decimalPrecision))), NAN);
+        result=oss.str();
+    }
+
+    if(globals::useDecimalComma && result.find('.')!=std::string::npos && !globals::error && !passedInAsArg)
+    {
+        for(size_t i{}; i<result.length(); i++) if(result.at(i)=='.') result.at(i)=',';
+    }
+
+
+    if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile) && !options.graph)
+    {
+        // This caused me immense pain
+        std::string addToHistory = '\n'+initialEquation+" = "+result;
+        if(resultHistory.find(addToHistory)==std::string::npos) resultHistory+=addToHistory;
+    }
+    cleanup:
+    resultAsOSStream.str("");
+    resultAsOSStream.clear();
+    equation.clear();
+    tokens.clear();
+    options.graph=false;
+    firstPass=false;
+    // globals::tokenMemory.clear();
+
+    userMacros=globals::userMacros;
+    userVariables=globals::userVariables;
+    return false;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1736,7 +1744,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
     {
         if(tokens.at(i).value()=="ans")
         {
-            tokens.at(i)=Token(globals::previousResult);
+            tokens.at(i)=Token(globals::ans);
         }
         else if(tokens.at(i).value()=="rnd" || tokens.at(i).value()=="rndint")
         {
@@ -2356,8 +2364,6 @@ T evaluateRoot( const Token &arg, const T xValue)
     if(evaluateArgs(arg, xValue, argVals,2)) return NAN;
     
     if(argVals.size()==1) argVals.emplace_back(2); // Default argument
-
-    // std::swap(argVals.at(0),argVals.at(1)); // My brain is too fried to change the code below. Don't kill me.
     
     Frac frac {decimalToFraction(argVals.at(1))};
     if(argVals.at(1)==0) return NAN;
