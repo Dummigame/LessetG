@@ -1431,7 +1431,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 {
     std::ostringstream resultAsOSStream;
     resultAsOSStream.precision(MAXOUTPUTPRECISION);
-
+    if(!globals::options.graph) noMemoize=true;
     if(globals::tokenMemory.find(input)!=globals::tokenMemory.end())
     {
         return globals::tokenMemory.find(input)->second;
