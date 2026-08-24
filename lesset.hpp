@@ -653,11 +653,16 @@ class Token
     ///////////////////////////////////////////////
     bool isAbs(std::string &input)
     {
-        if((input.at(0)!='|' || input.at(input.length()-1)!='|')&&input.find("abs(")!=0) return false;
+        if((input.at(0)!='|')&&input.find("abs(")!=0) return false;
         
         if(input.at(0)=='|') for(size_t i{1}; i<input.length()-1; i++) tokenValue.push_back(input.at(i));
         else for(size_t i{4}; i<input.length(); i++) tokenValue.push_back(input.at(i));
-        return true;
+        if(input.at(input.length()-1)!='|') tokenValue.push_back(input.at(input.length()-1));
+        for(size_t i{}; i<input.length(); i++)
+        {
+            if(input.at(i)!='|') return true;
+        }
+        return false;
     }    
     ///////////////////////////////////////////////
     static bool isSubexpr(std::string &input)
@@ -915,23 +920,6 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
             if(passedCalculationsFile) return false;
             return false;
         }
-
-    int parenthesesImbalance{};
-    uint absValueLineCount{};
-    for(size_t i{}; i<equation.length(); i++)
-    {
-        if(equation.at(i)=='|') absValueLineCount++;
-        // if(equation.at(i)=='(') parenthesesImbalance++;
-        // else if(equation.at(i)==')') parenthesesImbalance--;
-        if(parenthesesImbalance<0 || (equation.length()==i+1 && absValueLineCount%2!=0))
-        {
-            globals::error=true;
-            result+="Absolute value parentheses not balanced\n";
-            equation.clear();
-        }
-    }
-
-    if(absValueLineCount%2!=0||parenthesesImbalance<0) return false;
     
     if(equation.length()==0)
     {
@@ -1310,6 +1298,12 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         for(size_t i{}; i<result.length(); i++) if(result.at(i)=='.') result.at(i)=',';
     }
 
+    if(result.find('e')!=std::string::npos && options.prettyPrinting && !globals::error && !passedInAsArg && (result.find('+')!=std::string::npos || result.find('-')!=std::string::npos))
+    {
+        result.replace(result.find('e'),1,"×10^");
+        if(result.find('+')!=std::string::npos) result.erase(result.find('+'),1);
+    }
+
 
     if(!hasX && !(canDeclareIdentifiers && !passedCalculationsFile) && !options.graph)
     {
@@ -1465,19 +1459,18 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
                     currentToken.push_back('|');
                 }
                 inFunctionCall=true;
-                if(i==input.length()-1)
-                {
-                    globals::errorMessage+="Bad absolute value parentheses\n";
-                    globals::error=true;
-                    break;
-                }
             }
             if(input.at(i)==')') nestingLevel--;
             else if(input.at(i)=='(') nestingLevel++;
             if(nestingLevel==0 && input.at(i)=='|') absNestingLevel--;
-
+            if(absNestingLevel<0)
+            {
+                globals::errorMessage+="Bad absolute value parentheses\n";
+                globals::error=true;
+                break;
+            }
             if(nestingLevel==0 && absNestingLevel==0 && nestingLevel==0 && input.at(i)=='|' || 
-               (i==input.length()-1 && input.at(i)=='|')) 
+               (i==input.length()-1)) 
             {
                 currentToken.push_back(input.at(i));
                 tokens.emplace_back(currentToken);
@@ -1693,7 +1686,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
         if(tokens.at(i).value()=="-" &&
         tokens.at(i-1).type()!=token_t::BINARYOP &&
         tokens.at(i-1).category()!=tokenCategory_t::ASSIGNMENT &&
-        (tokens.at(i-1).type()==token_t::UNARYOP || tokens.at(i-1).value()!="-") &&
+        (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-") &&
         tokens.at(i-1).type()!=token_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("+"));
 
         // Delete unary plus since it does jack
