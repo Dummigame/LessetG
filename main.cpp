@@ -496,6 +496,7 @@ int main(int, char**)
     bool showGraphingMenuHint{true}; 
     bool hasShownHint{};
     bool showFunctionsMenu{};
+    bool showTrivia{};
 
     
 
@@ -1186,11 +1187,10 @@ int main(int, char**)
                         // Name the first 18 equations f(x) -> w(x), then add a number after the letter for each repitition of names
                         nameNumber=i/18;
                         nameIndex=i%18;
-                        char name[1]{}; // Trust
-                        name[0]=nameIndex+'f';
+                        char name = nameIndex+'f';
 
-                        if(nameNumber>0) ImGui::Text("%s%lu%s",name,nameNumber+1,"(x) = ");
-                        else ImGui::Text("%s%s",name,"(x) = ");
+                        if(nameNumber>0) ImGui::Text("%c%lu%s",nameIndex+'f',nameNumber+1,"(x) = ");
+                        else ImGui::Text("%c%s",name,"(x) = ");
 
                         ImGui::SameLine(53+(nameNumberLength)*5);
 
@@ -1550,13 +1550,13 @@ int main(int, char**)
                         ImGui::SetItemTooltip("Division... please not by 0. (÷)");
 
                         if(ImGui::MenuItem("**")) equation.append("**");
-                        ImGui::SetItemTooltip("Exponentiation. Defined when needed... I hope. (^)");
+                        ImGui::SetItemTooltip("Exponentiation. (^)");
 
                         if(ImGui::MenuItem("!")) equation.append("!");
-                        ImGui::SetItemTooltip("Factorial. (Uses Gamma function)");
+                        ImGui::SetItemTooltip("Factorial.");
 
                         if(ImGui::MenuItem("!!")) equation.append("!!");
-                        ImGui::SetItemTooltip("Semi-Factorial. Integers only!");
+                        ImGui::SetItemTooltip("Double-Factorial.");
 
                         if(ImGui::MenuItem("mod")) equation.append("mod");
                         ImGui::SetItemTooltip("Modulus, division with remainder. (%%)\nFloors the result of the division. fmod truncates it, rmod rounds it.");
@@ -1933,6 +1933,14 @@ int main(int, char**)
 
                         ImGui::EndMenu();
                     }
+                    if(showTrivia)
+                    {
+                        if(ImGui::BeginMenu("Trivia"))
+                        {
+                            ImGui::Text("Technically, all mutli argument functions are variadic, meaning you can supply an arbitrary number of arguments.\nWhether all of them are considered depends on the function.\n");
+                            ImGui::EndMenu();
+                        }
+                    }
                     ImGui::EndMenu();
                 }
                 ImGui::SetItemTooltip("Learn about the calculator.");
@@ -2028,6 +2036,12 @@ int main(int, char**)
             else if(equation=="how to exit vim" || equation=="how do i exit vim")
             {
                 resultPlusEquals = "  =  :q";
+            }
+
+            else if(equation=="trivia")
+            {
+                showTrivia=true;
+                resultPlusEquals = "  =  Read my ramblings! (help menu)";
             }
 
             else if(equation=="gayMode")
@@ -2289,7 +2303,7 @@ int main(int, char**)
                         }
                     }
                     // Recalculate at a high precision
-                    else if(timeStationary==HIGH_PRECISION_DRAW_DELAY || recalculateGraphs)
+                    if(timeStationary==HIGH_PRECISION_DRAW_DELAY || recalculateGraphs)
                     {
                         if(lessetB::globals::debugCout)
                         {

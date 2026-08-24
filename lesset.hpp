@@ -1298,7 +1298,7 @@ inline bool mainLoop(Options &options, bool passedInAsArg,bool passedCalculation
         for(size_t i{}; i<result.length(); i++) if(result.at(i)=='.') result.at(i)=',';
     }
 
-    if(result.find('e')!=std::string::npos && options.prettyPrinting && !globals::error && !passedInAsArg && (result.find('+')!=std::string::npos || result.find('-')!=std::string::npos))
+    if(result.find('e')!=std::string::npos && options.prettyPrinting && !globals::error && !passedInAsArg && !hasX && (result.find('+')!=std::string::npos || result.find('-')!=std::string::npos))
     {
         result.replace(result.find('e'),1,"×10^");
         if(result.find('+')!=std::string::npos) result.erase(result.find('+'),1);
@@ -1613,7 +1613,11 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     
     if(tokens.size()==0) return tokens;
     // Remove some stray operators
-    if(tokens.at(0).category()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
+    for(size_t i{}; i<tokens.size(); i++)
+    {
+        if(tokens.at(0).category()==tokenCategory_t::OPERATOR && tokens.at(0).value()!="-") tokens.erase(tokens.begin());
+        else break;
+    }
 
     // Implicit parentheses around single argument functions
     {
@@ -1655,7 +1659,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
     {
         // Case example: 4!!3 -> 4!! h* 3
         if(tokens.at(i).category()==tokenCategory_t::NUMBER && 
-        (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-" || tokens.at(i-1).value()=="!!"))
+        (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-"))
                 tokens.emplace(tokens.begin()+i++, Token("h*"));
 
         // Case example: 3x -> 3 h* x
@@ -1683,11 +1687,11 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
         // Case example: 3-3 -> 3+-3, (expr)-3 -> (expr)+-3
         // Reason: Binary minus is a lie lol
-        if(tokens.at(i).value()=="-" &&
-        tokens.at(i-1).type()!=token_t::BINARYOP &&
-        tokens.at(i-1).category()!=tokenCategory_t::ASSIGNMENT &&
-        (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-") &&
-        tokens.at(i-1).type()!=token_t::FUNCTION) tokens.emplace(tokens.begin()+i++, Token("+"));
+        if
+        (tokens.at(i).value()=="-" &&
+            ((tokens.at(i-1).category()==tokenCategory_t::NUMBER || tokens.at(i-1).category()==tokenCategory_t::SUBEXPR) ||
+            (tokens.at(i-1).type()==token_t::UNARYOP && tokens.at(i-1).value()!="-"))
+        ) tokens.emplace(tokens.begin()+i++, Token("+"));
 
         // Delete unary plus since it does jack
         if(tokens.at(i).value()=="+" &&
@@ -1698,6 +1702,7 @@ inline std::vector<Token> getTokens(const std::string &input, bool resetFirstRun
 
     for(int i{1}; i<tokens.size(); i++)
     {
+        if(i<1) continue;
         if(tokens.at(i).type()==token_t::BINARYOP && tokens.at(i-1).type()==token_t::BINARYOP) // Example: 3**/3 -> 3**3
         {
             tokens.erase(tokens.begin()+i--);
@@ -1735,22 +1740,25 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
     // Replace ans, rnd, rndint with numbers
     for(size_t i{}; i<tokens.size(); i++)
     {
-        if(tokens.at(i).value()=="ans")
+        if(tokens.at(i).type()==token_t::CONSTANT)
         {
-            tokens.at(i)=Token(globals::ans);
-        }
-        else if(tokens.at(i).value()=="rnd" || tokens.at(i).value()=="rndint")
-        {
-            std::uniform_real_distribution<> doubleDist(0,1);
-            resultAsOSStream<<doubleDist(randomMt);
-            std::string randomAsStr {resultAsOSStream.str()};
-            if(tokens.at(i).value()=="rndint") // To get random integers, it literally deletes the decimal point
+            if(tokens.at(i).value()=="ans")
             {
-                randomAsStr.erase(randomAsStr.find('.'), 1);
+                tokens.at(i)=Token(globals::ans);
             }
-            tokens.at(i)=Token(randomAsStr);
-            resultAsOSStream.str("");
-            resultAsOSStream.clear();
+            else if(tokens.at(i).value()=="rnd" || tokens.at(i).value()=="rndint")
+            {
+                std::uniform_real_distribution<> doubleDist(0,1);
+                resultAsOSStream<<doubleDist(randomMt);
+                std::string randomAsStr {resultAsOSStream.str()};
+                if(tokens.at(i).value()=="rndint") // To get random integers, it literally deletes the decimal point
+                {
+                    randomAsStr.erase(randomAsStr.find('.'), 1);
+                }
+                tokens.at(i)=Token(randomAsStr);
+                resultAsOSStream.str("");
+                resultAsOSStream.clear();
+            }
         }
     }
 
@@ -1881,7 +1889,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
             {
                 if(tokens.at(i-2).category()==tokenCategory_t::NUMBER && 
                 (globals::opToPriority.find(tokens.at(i-1).value()))!=globals::opToPriority.end() &&
-                globals::opToPriority.find(tokens.at(i-1).value())->second == pass && 
+                (globals::opToPriority.find(tokens.at(i-1).value())->second == pass || tokens.at(i-1).value()=="h*") && 
                 tokens.at(i).category()==tokenCategory_t::NUMBER)
                 {
                     T evaluatedBinary=evaluateBinary(tokens.at(i-2), tokens.at(i-1), tokens.at(i), xValue);
@@ -1899,7 +1907,7 @@ T calculation(std::vector<Token> tokens, const T xValue, T sumVar)
                     tokens.erase(tokens.begin()+i-1,tokens.begin()+i+1);
                     i-=2;
                 }
-            }
+            } 
             else if(pass==COMPARISONS && i>1)
             {
                 if(tokens.at(i-2).category()==tokenCategory_t::NUMBER && 
@@ -2238,7 +2246,6 @@ T evaluateSmax( const Token &arg, const T xValue)
     if(0>enumerator) enumerator=0;
 
     return maxArg+(pow(enumerator,2)/(4*argVals.at(2)));
-    // return (argVals.at(0)+argVals.at(1)+sqrt(pow((argVals.at(0)-argVals.at(1)),2)+argVals.at(2)))/2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2469,17 +2476,7 @@ T evaluateUnary(Token &numberToken, Token &operation, const T xValue)
         case 24: return -x;
         case 25:
         {
-            if(x<0) return NAN;
-            x=round(x);
-            T result{1};
-            for(T i{fmod(x, 2)+2}; i<x+1; i+=2)
-            {
-                if(x>19572801.5) return INFINITY;
-                if(x==0) return 1.0;
-                result*=i;
-            }
-            if(x<=3) return x;  
-            return result;          
+            return pow(2/boost::math::constants::pi<T>(),1/4.*(1-cos(boost::math::constants::pi<T>()*x)))*pow(2,x/2)*tgamma(x/2+1);
         }
         case 26: 
         {
